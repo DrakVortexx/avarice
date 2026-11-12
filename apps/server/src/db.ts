@@ -6,6 +6,7 @@ export interface PlayerProfile {
   name: string;
   x: number;
   z: number;
+  coins: number;
 }
 
 export function getPrisma(): Promise<PrismaClient | null> {
@@ -41,7 +42,7 @@ export async function loadOrCreatePlayer(
       update: { username, displayName },
       create: { authId, username, displayName },
     });
-    return { name: player.displayName, x: player.lastX, z: player.lastZ };
+    return { name: player.displayName, x: player.lastX, z: player.lastZ, coins: player.coins };
   } catch (error) {
     console.warn("[db] loadOrCreatePlayer failed:", error);
     return null;
@@ -53,6 +54,7 @@ export async function persistPlayer(
   displayName: string,
   x: number,
   z: number,
+  coins: number,
 ): Promise<void> {
   const prisma = await getPrisma();
   if (!prisma) {
@@ -62,7 +64,7 @@ export async function persistPlayer(
   try {
     await prisma.player.update({
       where: { authId },
-      data: { displayName, lastX: x, lastZ: z },
+      data: { displayName, lastX: x, lastZ: z, coins },
     });
   } catch (error) {
     console.warn("[db] persistPlayer failed:", error);

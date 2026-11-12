@@ -97,6 +97,58 @@ body {
   color: var(--muted);
 }
 
+.stats {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 10px;
+}
+
+.hp {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.hp-track {
+  position: relative;
+  flex: 1;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--panel-border);
+  overflow: hidden;
+}
+
+.hp-fill {
+  height: 100%;
+  width: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #6ee7a8, #7fd1b9);
+  transition: width 0.18s ease, background 0.18s ease;
+}
+
+.hp-fill.low {
+  background: linear-gradient(90deg, #ff7a5c, #ffb27a);
+}
+
+.hp-text {
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.coins {
+  font-size: 13px;
+  font-weight: 700;
+  color: #ffe9a8;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .top-right {
   top: 18px;
   right: 18px;
@@ -310,6 +362,39 @@ button.ghost:hover:not(:disabled) {
   flex-direction: column;
   gap: 8px;
   margin-top: 2px;
+}
+
+.death {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle at 50% 45%, rgba(60, 12, 12, 0.35), rgba(7, 10, 14, 0.72) 70%);
+  pointer-events: none;
+  z-index: 15;
+}
+
+.death-card {
+  text-align: center;
+  padding: 22px 30px;
+  border-radius: 16px;
+  background: rgba(14, 20, 28, 0.82);
+  border: 1px solid rgba(255, 122, 122, 0.35);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
+}
+
+.death-card h2 {
+  margin: 0 0 6px;
+  font-size: 20px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--danger);
+}
+
+.death-card p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
 }
 
 #loading {

@@ -17,10 +17,18 @@
           <span id="status" class="status connecting">Connecting&hellip;</span>
           <span id="players" class="players">0 online</span>
         </div>
+        <div class="stats">
+          <div class="hp">
+            <div class="hp-track"><div id="hp-fill" class="hp-fill"></div></div>
+            <span id="hp-text" class="hp-text">100 / 100</span>
+          </div>
+          <span id="coins" class="coins">100c</span>
+        </div>
       </section>
 
       <section class="panel top-right">
         <div class="control"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move</div>
+        <div class="control"><kbd>Click</kbd><kbd>Space</kbd> attack</div>
         <div class="control"><kbd>Enter</kbd> chat</div>
         <button id="logout" class="logout" type="button">Log out</button>
       </section>
@@ -65,6 +73,13 @@
           </button>
         </div>
       </form>
+    </div>
+
+    <div id="death" class="death hidden">
+      <div class="death-card">
+        <h2>You died</h2>
+        <p>Your coins were left behind. Respawning at the plaza&hellip;</p>
+      </div>
     </div>
 
     <div id="loading">Loading Avarice&hellip;</div>
