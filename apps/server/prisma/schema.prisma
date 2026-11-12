@@ -1,0 +1,71 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Player {
+  id          String   @id @default(cuid())
+  authId      String   @unique
+  username    String   @unique
+  displayName String
+  lastX       Float    @default(0)
+  lastZ       Float    @default(0)
+  coins       Int      @default(100)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  inventory InventoryEntry[]
+  listings  BazaarListing[]
+  ledger    LedgerEntry[]
+}
+
+model Item {
+  id          String   @id
+  name        String
+  rarity      String
+  baseValue   Int
+  description String   @default("")
+
+  inventory InventoryEntry[]
+  listings  BazaarListing[]
+}
+
+model InventoryEntry {
+  id       String @id @default(cuid())
+  playerId String
+  itemId   String
+  quantity Int    @default(1)
+
+  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  item   Item   @relation(fields: [itemId], references: [id])
+
+  @@unique([playerId, itemId])
+}
+
+model BazaarListing {
+  id          String   @id @default(cuid())
+  sellerId    String
+  itemId      String
+  quantity    Int      @default(1)
+  pricePerUnit Int
+  status      String   @default("active")
+  createdAt   DateTime @default(now())
+
+  seller Player @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  item   Item   @relation(fields: [itemId], references: [id])
+}
+
+model LedgerEntry {
+  id        String   @id @default(cuid())
+  playerId  String
+  kind      String
+  amount    Int
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+}

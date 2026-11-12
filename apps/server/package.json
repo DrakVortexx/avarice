@@ -1,0 +1,27 @@
+{
+  "name": "@avarice/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "db:generate": "prisma generate",
+    "db:push": "prisma db push"
+  },
+  "dependencies": {
+    "@avarice/shared": "*",
+    "@colyseus/schema": "^5.0.47",
+    "@prisma/client": "^6.19.3",
+    "@supabase/supabase-js": "^2.58.0",
+    "colyseus": "^0.18.12",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "prisma": "^6.19.3",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3"
+  }
+}

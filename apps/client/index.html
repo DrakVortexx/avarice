@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Avarice - a multiplayer 2D economy MMO." />
+    <title>Avarice</title>
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body>
+    <canvas id="game"></canvas>
+
+    <div id="hud">
+      <section class="panel top-left">
+        <h1>Avarice</h1>
+        <div class="status-row">
+          <span id="status" class="status connecting">Connecting&hellip;</span>
+          <span id="players" class="players">0 online</span>
+        </div>
+      </section>
+
+      <section class="panel top-right">
+        <div class="control"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move</div>
+        <div class="control"><kbd>Enter</kbd> chat</div>
+        <button id="logout" class="logout" type="button">Log out</button>
+      </section>
+
+      <section id="log" class="panel bottom-left" aria-live="polite"></section>
+
+      <form id="chat-form" class="chat hidden" autocomplete="off">
+        <input
+          id="chat-input"
+          type="text"
+          maxlength="160"
+          placeholder="Say something&hellip;"
+          aria-label="Chat message"
+        />
+      </form>
+    </div>
+
+    <div id="auth" class="auth-overlay">
+      <form id="auth-form" class="auth-card" autocomplete="off">
+        <h1>Avarice</h1>
+        <p class="auth-sub">Enter the market. Keep what you can.</p>
+        <label class="field">
+          <span>Username</span>
+          <input
+            id="auth-username"
+            type="text"
+            maxlength="20"
+            autocapitalize="none"
+            spellcheck="false"
+            required
+          />
+        </label>
+        <label class="field">
+          <span>Password</span>
+          <input id="auth-password" type="password" minlength="6" required />
+        </label>
+        <div id="auth-error" class="auth-error hidden"></div>
+        <div class="auth-actions">
+          <button id="auth-submit" type="submit">Sign in</button>
+          <button id="auth-toggle" type="button" class="ghost">
+            Need an account? Create one
+          </button>
+        </div>
+      </form>
+    </div>
+
+    <div id="loading">Loading Avarice&hellip;</div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
