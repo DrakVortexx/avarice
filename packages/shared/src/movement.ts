@@ -53,3 +53,9 @@ export function sanitizeYaw(raw: unknown): number {
 export function distanceBetween(a: Vec2, b: Vec2): number {
   return Math.hypot(a.x - b.x, a.z - b.z);
 }
+
+export function randomInt(min: number, max: number, rng: () => number = Math.random): number {
+  const low = Math.ceil(Math.min(min, max));
+  const high = Math.floor(Math.max(min, max));
+  return low + Math.floor(rng() * (high - low + 1));
+}

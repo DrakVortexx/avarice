@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clampInput, distanceBetween, sanitizeMoveInput, stepPosition } from "./movement.js";
+import { clampInput, distanceBetween, randomInt, sanitizeMoveInput, stepPosition } from "./movement.js";
 import { PLAYER_SPEED, WORLD_RADIUS } from "./constants.js";
 
 describe("clampInput", () => {
@@ -50,5 +50,12 @@ describe("sanitizeMoveInput", () => {
 describe("distanceBetween", () => {
   it("computes planar distance", () => {
     expect(distanceBetween({ x: 0, z: 0 }, { x: 3, z: 4 })).toBe(5);
+  });
+});
+
+describe("randomInt", () => {
+  it("stays within inclusive bounds", () => {
+    expect(randomInt(3, 5, () => 0)).toBe(3);
+    expect(randomInt(3, 5, () => 0.999999)).toBe(5);
   });
 });

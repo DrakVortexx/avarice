@@ -1,4 +1,5 @@
 import { Container, Graphics, Text } from "pixi.js";
+import { PIXELS_PER_UNIT } from "./render.js";
 
 const PALETTE = [0x7fd1b9, 0xb79bff, 0xffc98a, 0x6fb8a8, 0xd98a5f, 0x8fd6e8, 0xe8c15a, 0xff7a5c];
 
@@ -15,10 +16,6 @@ export interface Avatar {
   setPosition: (x: number, z: number) => void;
   setFacing: (yaw: number) => void;
   destroy: () => void;
-}
-
-export interface EnemyAvatar extends Avatar {
-  setHealth: (hp: number, maxHp: number) => void;
 }
 
 export interface LootPile {
@@ -39,33 +36,51 @@ export function colorFromId(id: string): number {
   return PALETTE[hashString(id) % PALETTE.length] ?? 0x7fd1b9;
 }
 
-function makeLabel(text: string, y: number): Text {
+function makeLabel(text: string): Text {
   const label = new Text({ text, style: LABEL_STYLE });
   label.anchor.set(0.5, 1);
-  label.y = y;
+  label.position.y = -0.95;
+  label.scale.set(1 / PIXELS_PER_UNIT);
   return label;
+}
+
+function lighten(color: number, amount: number): number {
+  const r = Math.min(255, ((color >> 16) & 0xff) + amount);
+  const g = Math.min(255, ((color >> 8) & 0xff) + amount);
+  const b = Math.min(255, (color & 0xff) + amount);
+  return (r << 16) | (g << 8) | b;
 }
 
 export function createAvatar(name: string, color?: number): Avatar {
   const container = new Container();
   const body = new Container();
+  const tint = color ?? colorFromId(name);
+
+  const shadow = new Graphics();
+  shadow.ellipse(0, 0.16, 0.62, 0.36).fill({ color: 0x06100c, alpha: 0.32 });
+  container.addChild(shadow);
+
+  const cloak = new Graphics();
+  cloak.circle(0, 0, 0.52).fill({ color: 0x0b0f14, alpha: 0.5 });
+  body.addChild(cloak);
 
   const disc = new Graphics();
-  disc.circle(0, 0, 16).fill({ color: color ?? colorFromId(name), alpha: 0.95 });
-  disc.circle(0, 0, 16).stroke({ width: 2, color: 0xffffff, alpha: 0.22 });
+  disc.circle(0, 0, 0.46).fill({ color: tint, alpha: 0.96 });
+  disc.circle(0, 0, 0.46).stroke({ width: 0.07, color: 0xffffff, alpha: 0.28 });
+  disc.circle(-0.13, -0.14, 0.17).fill({ color: lighten(tint, 34), alpha: 0.55 });
   body.addChild(disc);
 
   const facing = new Graphics();
   facing
-    .moveTo(0, -24)
-    .lineTo(7, -13)
-    .lineTo(-7, -13)
+    .moveTo(0, -0.78)
+    .lineTo(0.3, -0.3)
+    .lineTo(-0.3, -0.3)
     .closePath()
-    .fill({ color: 0xffffff, alpha: 0.85 });
+    .fill({ color: 0xffffff, alpha: 0.9 });
   body.addChild(facing);
 
   container.addChild(body);
-  container.addChild(makeLabel(name.slice(0, 16), -30));
+  container.addChild(makeLabel(name.slice(0, 16)));
 
   return {
     container,
@@ -74,63 +89,6 @@ export function createAvatar(name: string, color?: number): Avatar {
     },
     setFacing(yaw) {
       body.rotation = -yaw;
-    },
-    destroy() {
-      container.destroy({ children: true });
-    },
-  };
-}
-
-export function createEnemyAvatar(name: string, color: number): EnemyAvatar {
-  const container = new Container();
-  const body = new Container();
-
-  const shape = new Graphics();
-  shape.moveTo(0, -15).lineTo(15, 0).lineTo(0, 15).lineTo(-15, 0).closePath();
-  shape.fill({ color, alpha: 0.95 });
-  shape.moveTo(0, -15).lineTo(15, 0).lineTo(0, 15).lineTo(-15, 0).closePath();
-  shape.stroke({ width: 2, color: 0x0b0f14, alpha: 0.65 });
-  body.addChild(shape);
-
-  const core = new Graphics();
-  core.circle(0, 0, 4).fill({ color: 0x0b0f14, alpha: 0.5 });
-  body.addChild(core);
-
-  const eye = new Graphics();
-  eye.circle(0, -6, 2.2).fill({ color: 0xfff3d6, alpha: 0.9 });
-  body.addChild(eye);
-
-  container.addChild(body);
-  container.addChild(makeLabel(name.slice(0, 16), -46));
-
-  const hpBar = new Graphics();
-  hpBar.y = -42;
-  container.addChild(hpBar);
-
-  let lastHp = -1;
-  let lastMaxHp = -1;
-
-  return {
-    container,
-    setPosition(x, z) {
-      container.position.set(x, z);
-    },
-    setFacing(yaw) {
-      body.rotation = -yaw;
-    },
-    setHealth(hp, maxHp) {
-      if (hp === lastHp && maxHp === lastMaxHp) {
-        return;
-      }
-      lastHp = hp;
-      lastMaxHp = maxHp;
-
-      const ratio = maxHp > 0 ? Math.max(0, Math.min(1, hp / maxHp)) : 0;
-      const fillColor = ratio > 0.5 ? 0x6ee7a8 : ratio > 0.25 ? 0xe8c15a : 0xff7a5c;
-
-      hpBar.clear();
-      hpBar.rect(-17, 0, 34, 4).fill({ color: 0x0b0f14, alpha: 0.8 });
-      hpBar.rect(-17, 0, 34 * ratio, 4).fill({ color: fillColor, alpha: 1 });
     },
     destroy() {
       container.destroy({ children: true });
@@ -142,13 +100,35 @@ export function createLootPile(amount: number): LootPile {
   const container = new Container();
 
   const glow = new Graphics();
-  glow.circle(0, 0, 8).fill({ color: 0xe8c15a, alpha: 0.16 });
+  glow.circle(0, 0, 1.15).fill({ color: 0xe8c15a, alpha: 0.13 });
+  glow.circle(0, 0, 0.72).fill({ color: 0xffe9a8, alpha: 0.12 });
   container.addChild(glow);
 
-  const coin = new Graphics();
-  coin.circle(0, 0, 4).fill({ color: 0xe8c15a, alpha: 0.95 });
-  coin.circle(0, 0, 4).stroke({ width: 1.5, color: 0xfff3d6, alpha: 0.7 });
-  container.addChild(coin);
+  const shadow = new Graphics();
+  shadow.ellipse(0, 0.22, 0.5, 0.26).fill({ color: 0x06100c, alpha: 0.35 });
+  container.addChild(shadow);
+
+  const coins = new Graphics();
+  coins.ellipse(0, 0.12, 0.34, 0.16).fill({ color: 0xb8892f, alpha: 1 });
+  coins.ellipse(0, 0.02, 0.34, 0.16).fill({ color: 0xd8a83c, alpha: 1 });
+  coins.ellipse(-0.12, -0.08, 0.2, 0.1).fill({ color: 0xf0c860, alpha: 1 });
+  coins.ellipse(0.14, -0.12, 0.17, 0.09).fill({ color: 0xffe08a, alpha: 1 });
+  coins.circle(0, -0.16, 0.1).fill({ color: 0xfff3c4, alpha: 1 });
+  container.addChild(coins);
+
+  const sparkle = new Graphics();
+  sparkle
+    .moveTo(0.44, -0.34)
+    .lineTo(0.5, -0.16)
+    .lineTo(0.68, -0.1)
+    .lineTo(0.5, -0.04)
+    .lineTo(0.44, 0.14)
+    .lineTo(0.38, -0.04)
+    .lineTo(0.2, -0.1)
+    .lineTo(0.38, -0.16)
+    .closePath()
+    .fill({ color: 0xfff6cf, alpha: 0.9 });
+  container.addChild(sparkle);
 
   const label = new Text({
     text: `${amount}c`,
@@ -161,7 +141,8 @@ export function createLootPile(amount: number): LootPile {
     },
   });
   label.anchor.set(0.5, 1);
-  label.y = -8;
+  label.position.y = -0.7;
+  label.scale.set(1 / PIXELS_PER_UNIT);
   container.addChild(label);
 
   return {

@@ -11,25 +11,8 @@ export interface MoveInput {
   seq?: number;
 }
 
-export interface AttackInput {
-  yaw: number;
-}
-
 export interface ChatPayload {
   text: string;
-}
-
-export type CombatKind = "hit" | "death" | "respawn";
-
-export interface CombatEvent {
-  kind: CombatKind;
-  source: string;
-  sourceId: string;
-  target: string;
-  targetId: string;
-  damage?: number;
-  x: number;
-  z: number;
 }
 
 export interface LootEvent {

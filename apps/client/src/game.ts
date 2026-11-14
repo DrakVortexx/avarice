@@ -1,26 +1,18 @@
 import { Application, Container, Graphics, Text } from "pixi.js";
 import {
-  PLAYER_ATTACK_ARC,
-  PLAYER_ATTACK_RANGE,
+  BUILDINGS,
+  LAKE,
+  PLAYER_RADIUS,
   PLAYER_SPEED,
+  PLAZA_RADIUS,
   WORLD_RADIUS,
+  resolveWorldCollision,
   stepPosition,
 } from "@avarice/shared";
 import { buildMap } from "./map.js";
-import {
-  createAvatar,
-  createEnemyAvatar,
-  createLootPile,
-  type Avatar,
-  type EnemyAvatar,
-  type LootPile,
-} from "./entities.js";
+import { createAvatar, createLootPile, type Avatar, type LootPile } from "./entities.js";
+import { PIXELS_PER_UNIT } from "./render.js";
 import type { Movement } from "./input.js";
-
-const ENEMY_COLORS: Record<string, number> = {
-  scavenger: 0xd98a5f,
-  brute: 0xc2554f,
-};
 
 const EFFECT_TEXT_STYLE = {
   fontFamily: "Segoe UI, system-ui, sans-serif",
@@ -30,13 +22,8 @@ const EFFECT_TEXT_STYLE = {
   stroke: { color: 0x0b0f14, width: 3 },
 } as const;
 
-interface EnemyTarget {
-  x: number;
-  z: number;
-  yaw: number;
-  hp: number;
-  maxHp: number;
-}
+const MINIMAP_RADIUS = 76;
+const MINIMAP_SCALE = MINIMAP_RADIUS / WORLD_RADIUS;
 
 interface Effect {
   view: Container;
@@ -54,16 +41,17 @@ function lerpAngle(from: number, to: number, t: number): number {
 export class Game {
   readonly app = new Application();
   private readonly world = new Container();
+  private readonly minimap = new Container();
+  private readonly minimapDots = new Graphics();
   private local: Avatar | null = null;
   private readonly remotes = new Map<string, Avatar>();
   private readonly remoteTargets = new Map<string, { x: number; z: number; yaw: number }>();
-  private readonly enemies = new Map<string, EnemyAvatar>();
-  private readonly enemyTargets = new Map<string, EnemyTarget>();
   private readonly lootPiles = new Map<string, LootPile>();
   private readonly effects: Effect[] = [];
 
   readonly localPosition = { x: 0, z: 0 };
   private readonly serverPosition = { x: 0, z: 0 };
+  private readonly camera = { x: 0, y: 0 };
   private hasServerPosition = false;
   yaw = 0;
   private targetYaw = 0;
@@ -87,10 +75,40 @@ export class Game {
 
     this.local = createAvatar("You", 0x7fd1b9);
     this.world.addChild(this.local.container);
+
+    this.buildMinimap();
+  }
+
+  private buildMinimap(): void {
+    const base = new Graphics();
+    base.circle(0, 0, MINIMAP_RADIUS + 8).fill({ color: 0x0b0f14, alpha: 0.72 });
+    base.circle(0, 0, MINIMAP_RADIUS + 8).stroke({ width: 2, color: 0x4f8f83, alpha: 0.45 });
+    base.circle(0, 0, MINIMAP_RADIUS).fill({ color: 0x1b2a22, alpha: 0.85 });
+    base.circle(0, 0, MINIMAP_RADIUS).stroke({ width: 1.5, color: 0x6fb8a8, alpha: 0.6 });
+
+    base.circle(0, 0, PLAZA_RADIUS * MINIMAP_SCALE).fill({ color: 0x39423b, alpha: 0.9 });
+    base
+      .ellipse(LAKE.x * MINIMAP_SCALE, LAKE.z * MINIMAP_SCALE, LAKE.rx * MINIMAP_SCALE, LAKE.rz * MINIMAP_SCALE)
+      .fill({ color: 0x2a5a70, alpha: 0.85 });
+
+    for (const building of BUILDINGS) {
+      base
+        .rect(
+          building.x * MINIMAP_SCALE,
+          building.z * MINIMAP_SCALE,
+          building.w * MINIMAP_SCALE,
+          building.h * MINIMAP_SCALE,
+        )
+        .fill({ color: 0x8a6a4a, alpha: 0.85 });
+    }
+
+    this.minimap.addChild(base, this.minimapDots);
+    this.app.stage.addChild(this.minimap);
   }
 
   updateLocal(dt: number, movement: Movement): void {
-    const next = stepPosition(this.localPosition, movement, dt, PLAYER_SPEED, WORLD_RADIUS);
+    const stepped = stepPosition(this.localPosition, movement, dt, PLAYER_SPEED, WORLD_RADIUS);
+    const next = resolveWorldCollision(stepped, PLAYER_RADIUS);
     this.localPosition.x = next.x;
     this.localPosition.z = next.z;
 
@@ -104,10 +122,10 @@ export class Game {
         this.localPosition.x - this.serverPosition.x,
         this.localPosition.z - this.serverPosition.z,
       );
-      if (error > 4) {
+      if (error > 6) {
         this.localPosition.x = this.serverPosition.x;
         this.localPosition.z = this.serverPosition.z;
-      } else if (error > 1.5) {
+      } else if (error > 1.2) {
         const correction = 1 - Math.exp(-dt * 3);
         this.localPosition.x += (this.serverPosition.x - this.localPosition.x) * correction;
         this.localPosition.z += (this.serverPosition.z - this.localPosition.z) * correction;
@@ -132,19 +150,7 @@ export class Game {
       avatar.setFacing(target.yaw);
     }
 
-    const enemySmoothing = 1 - Math.exp(-dt * 12);
-    for (const [id, avatar] of this.enemies) {
-      const target = this.enemyTargets.get(id);
-      if (!target) {
-        continue;
-      }
-      avatar.container.position.x += (target.x - avatar.container.position.x) * enemySmoothing;
-      avatar.container.position.y += (target.z - avatar.container.position.y) * enemySmoothing;
-      avatar.setFacing(target.yaw);
-      avatar.setHealth(target.hp, target.maxHp);
-    }
-
-    const pulse = 1 + Math.sin(performance.now() / 300) * 0.08;
+    const pulse = 1 + Math.sin(performance.now() / 320) * 0.09;
     for (const pile of this.lootPiles.values()) {
       pile.container.scale.set(pulse);
     }
@@ -163,43 +169,73 @@ export class Game {
       }
     }
 
-    this.world.x = this.app.screen.width / 2 - this.localPosition.x;
-    this.world.y = this.app.screen.height / 2 - this.localPosition.z;
+    const camSmoothing = 1 - Math.exp(-dt * 9);
+    this.camera.x += (this.localPosition.x * PIXELS_PER_UNIT - this.camera.x) * camSmoothing;
+    this.camera.y += (this.localPosition.z * PIXELS_PER_UNIT - this.camera.y) * camSmoothing;
+
+    this.world.scale.set(PIXELS_PER_UNIT);
+    this.world.x = this.app.screen.width / 2 - this.camera.x;
+    this.world.y = this.app.screen.height / 2 - this.camera.y;
+
+    this.updateMinimap();
   }
 
-  aimAt(screenX: number, screenY: number): number {
-    const worldX = screenX - this.world.x;
-    const worldZ = screenY - this.world.y;
-    const dx = worldX - this.localPosition.x;
-    const dz = worldZ - this.localPosition.z;
-    if (Math.hypot(dx, dz) < 0.001) {
-      return this.yaw;
+  private updateMinimap(): void {
+    this.minimap.position.set(this.app.screen.width - MINIMAP_RADIUS - 32, this.app.screen.height - MINIMAP_RADIUS - 32);
+
+    const dots = this.minimapDots;
+    dots.clear();
+
+    for (const pile of this.lootPiles.values()) {
+      dots.circle(pile.container.x * MINIMAP_SCALE, pile.container.y * MINIMAP_SCALE, 1.4).fill({
+        color: 0xe8c15a,
+        alpha: 0.65,
+      });
     }
-    return Math.atan2(-dx, -dz);
-  }
 
-  setAim(yaw: number): void {
-    this.yaw = yaw;
-    this.targetYaw = yaw;
-  }
+    for (const [id] of this.remotes) {
+      const target = this.remoteTargets.get(id);
+      if (!target) {
+        continue;
+      }
+      dots.circle(target.x * MINIMAP_SCALE, target.z * MINIMAP_SCALE, 2.6).fill({
+        color: 0xb79bff,
+        alpha: 0.95,
+      });
+      dots.circle(target.x * MINIMAP_SCALE, target.z * MINIMAP_SCALE, 2.6).stroke({
+        width: 0.8,
+        color: 0x0b0f14,
+        alpha: 0.6,
+      });
+    }
 
-  spawnSwing(yaw: number): void {
-    const graphic = new Graphics();
-    const start = -yaw - Math.PI / 2 - PLAYER_ATTACK_ARC / 2;
-    const end = -yaw - Math.PI / 2 + PLAYER_ATTACK_ARC / 2;
-    graphic.moveTo(0, 0).arc(0, 0, PLAYER_ATTACK_RANGE, start, end).closePath();
-    graphic.fill({ color: 0xffffff, alpha: 0.22 });
-    graphic.position.set(this.localPosition.x, this.localPosition.z);
-    this.world.addChild(graphic);
-    this.effects.push({ view: graphic, life: 0.16, maxLife: 0.16, rise: 0 });
+    const halfW = (this.app.screen.width / PIXELS_PER_UNIT) * MINIMAP_SCALE * 0.5;
+    const halfH = (this.app.screen.height / PIXELS_PER_UNIT) * MINIMAP_SCALE * 0.5;
+    dots
+      .rect(
+        this.localPosition.x * MINIMAP_SCALE - halfW,
+        this.localPosition.z * MINIMAP_SCALE - halfH,
+        halfW * 2,
+        halfH * 2,
+      )
+      .stroke({ width: 1, color: 0xffffff, alpha: 0.22 });
+
+    dots.circle(this.localPosition.x * MINIMAP_SCALE, this.localPosition.z * MINIMAP_SCALE, 3.4).fill({
+      color: 0x7fd1b9,
+      alpha: 1,
+    });
+    dots
+      .circle(this.localPosition.x * MINIMAP_SCALE, this.localPosition.z * MINIMAP_SCALE, 3.4)
+      .stroke({ width: 1, color: 0x0b0f14, alpha: 0.7 });
   }
 
   spawnFloatingText(x: number, z: number, text: string, color = 0xffffff): void {
     const label = new Text({ text, style: { ...EFFECT_TEXT_STYLE, fill: color } });
     label.anchor.set(0.5, 1);
     label.position.set(x, z);
+    label.scale.set(1 / PIXELS_PER_UNIT);
     this.world.addChild(label);
-    this.effects.push({ view: label, life: 0.7, maxLife: 0.7, rise: 28 });
+    this.effects.push({ view: label, life: 0.9, maxLife: 0.9, rise: 2.4 });
   }
 
   setServerPosition(x: number, z: number): void {
@@ -209,6 +245,8 @@ export class Game {
       this.hasServerPosition = true;
       this.localPosition.x = x;
       this.localPosition.z = z;
+      this.camera.x = x * PIXELS_PER_UNIT;
+      this.camera.y = z * PIXELS_PER_UNIT;
     }
   }
 
@@ -237,48 +275,6 @@ export class Game {
       this.remotes.delete(id);
     }
     this.remoteTargets.delete(id);
-  }
-
-  addEnemy(
-    id: string,
-    type: string,
-    name: string,
-    x: number,
-    z: number,
-    yaw: number,
-    hp: number,
-    maxHp: number,
-  ): void {
-    if (this.enemies.has(id)) {
-      return;
-    }
-    const avatar = createEnemyAvatar(name, ENEMY_COLORS[type] ?? 0xd98a5f);
-    avatar.setPosition(x, z);
-    avatar.setFacing(yaw);
-    avatar.setHealth(hp, maxHp);
-    this.world.addChild(avatar.container);
-    this.enemies.set(id, avatar);
-    this.enemyTargets.set(id, { x, z, yaw, hp, maxHp });
-  }
-
-  updateEnemy(id: string, x: number, z: number, yaw: number, hp: number, maxHp: number): void {
-    const target = this.enemyTargets.get(id);
-    if (target) {
-      target.x = x;
-      target.z = z;
-      target.yaw = yaw;
-      target.hp = hp;
-      target.maxHp = maxHp;
-    }
-  }
-
-  removeEnemy(id: string): void {
-    const avatar = this.enemies.get(id);
-    if (avatar) {
-      avatar.destroy();
-      this.enemies.delete(id);
-    }
-    this.enemyTargets.delete(id);
   }
 
   addLoot(id: string, x: number, z: number, amount: number): void {

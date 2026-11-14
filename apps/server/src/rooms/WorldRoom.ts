@@ -1,37 +1,32 @@
 import { Room, type Client } from "colyseus";
 import {
-  ENEMIES,
-  ENEMY_RESPAWN_MS,
-  LOOT_LIFETIME_MS,
-  LOOT_PICKUP_RADIUS,
-  MAX_ENEMIES,
+  MAX_PICKUPS,
   MAX_PLAYERS,
-  PLAYER_ATTACK_COOLDOWN_MS,
-  PLAYER_ATTACK_DAMAGE,
-  PLAYER_MAX_HP,
-  PLAYER_RESPAWN_MS,
+  PICKUP_AMOUNT_MAX,
+  PICKUP_AMOUNT_MIN,
+  PICKUP_INTERVAL_MS,
+  PICKUP_LIFETIME_MS,
+  PICKUP_RADIUS,
+  PLAYER_RADIUS,
   PLAYER_SPEED,
-  SAFE_RADIUS,
+  STARTING_COINS,
   TICK_MS,
   TICK_SECONDS,
   WORLD_RADIUS,
-  applyDamage,
   distanceBetween,
-  getEnemy,
-  isInAttackArc,
-  isInsideSafeZone,
+  isPositionFree,
   randomInt,
+  resolveWorldCollision,
   sanitizeChat,
   sanitizeMoveInput,
   sanitizeYaw,
   stepPosition,
   type ChatEvent,
-  type CombatEvent,
-  type EnemyId,
   type LootEvent,
   type MoveInput,
+  type Vec2,
 } from "@avarice/shared";
-import { EnemyState, LootState, PlayerState, WorldState } from "./schema/WorldState.js";
+import { LootState, PlayerState, WorldState } from "./schema/WorldState.js";
 import { loadOrCreatePlayer, persistPlayer } from "../db.js";
 import { verifyAccessToken, type AuthResult } from "../auth.js";
 
@@ -50,18 +45,24 @@ interface PersistRecord {
 }
 
 const PERSIST_INTERVAL_MS = 15_000;
-const SCAVENGER_CHANCE = 0.7;
 
-function randomSpawn(): { x: number; z: number } {
+function randomSpawn(): Vec2 {
   const angle = Math.random() * Math.PI * 2;
-  const radius = 6 + Math.random() * 5;
+  const radius = 3 + Math.random() * 5;
   return { x: Math.cos(angle) * radius, z: Math.sin(angle) * radius };
 }
 
-function randomEnemySpawn(): { x: number; z: number } {
-  const angle = Math.random() * Math.PI * 2;
-  const radius = SAFE_RADIUS + 3 + Math.random() * (WORLD_RADIUS - SAFE_RADIUS - 5);
-  return { x: Math.cos(angle) * radius, z: Math.sin(angle) * radius };
+function randomPickupSpawn(): Vec2 {
+  for (let attempt = 0; attempt < 64; attempt += 1) {
+    const angle = Math.random() * Math.PI * 2;
+    const radius = Math.sqrt(Math.random()) * (WORLD_RADIUS - 8);
+    const x = Math.cos(angle) * radius;
+    const z = Math.sin(angle) * radius;
+    if (isPositionFree(x, z, 1.2)) {
+      return { x, z };
+    }
+  }
+  return { x: 0, z: 0 };
 }
 
 export class WorldRoom extends Room<{ state: WorldState }> {
@@ -70,13 +71,9 @@ export class WorldRoom extends Room<{ state: WorldState }> {
 
   private readonly playerInputs = new Map<string, PlayerInput>();
   private readonly identities = new Map<string, AuthResult>();
-  private readonly attackReadyAt = new Map<string, number>();
-  private readonly enemyCooldowns = new Map<string, number>();
-  private readonly playerRespawns = new Map<string, number>();
   private readonly lootExpiry = new Map<string, number>();
-  private enemyRespawns: number[] = [];
   private lastPersistAt = 0;
-  private enemySeq = 0;
+  private lastPickupAt = 0;
   private lootSeq = 0;
 
   messages = {
@@ -87,9 +84,6 @@ export class WorldRoom extends Room<{ state: WorldState }> {
         z: input.z,
         yaw: sanitizeYaw(message),
       });
-    },
-    attack: (client: Client, message: unknown) => {
-      this.handleAttack(client, message);
     },
     chat: (client: Client, message: unknown) => {
       const payload = sanitizeChat(message);
@@ -119,8 +113,9 @@ export class WorldRoom extends Room<{ state: WorldState }> {
 
   onCreate() {
     this.setTimestep(() => this.update(), TICK_MS);
-    for (let i = 0; i < MAX_ENEMIES; i += 1) {
-      this.spawnEnemy();
+
+    for (let i = 0; i < Math.floor(MAX_PICKUPS / 2); i += 1) {
+      this.spawnPickup();
     }
   }
 
@@ -134,16 +129,17 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     this.playerInputs.set(client.sessionId, { x: 0, z: 0, yaw: 0 });
 
     const saved = await loadOrCreatePlayer(identity.authId, identity.username, identity.displayName);
-    const spawn = saved ?? randomSpawn();
+    const spawn =
+      saved && (Math.abs(saved.x) > 0.01 || Math.abs(saved.z) > 0.01)
+        ? { x: saved.x, z: saved.z }
+        : randomSpawn();
+    const resolvedSpawn = resolveWorldCollision(spawn, PLAYER_RADIUS);
 
     const player = new PlayerState({ name: identity.displayName });
-    player.x = spawn.x;
-    player.z = spawn.z;
-    player.yaw = Math.atan2(spawn.x, spawn.z);
-    player.maxHp = PLAYER_MAX_HP;
-    player.hp = PLAYER_MAX_HP;
-    player.coins = saved?.coins ?? 100;
-    player.dead = false;
+    player.x = resolvedSpawn.x;
+    player.z = resolvedSpawn.z;
+    player.yaw = Math.atan2(-resolvedSpawn.x, -resolvedSpawn.z);
+    player.coins = saved?.coins ?? STARTING_COINS;
     this.state.players.set(client.sessionId, player);
 
     this.broadcast(
@@ -170,8 +166,6 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     this.state.players.delete(sessionId);
     this.playerInputs.delete(sessionId);
     this.identities.delete(sessionId);
-    this.attackReadyAt.delete(sessionId);
-    this.playerRespawns.delete(sessionId);
 
     if (identity) {
       this.broadcast("chat", {
@@ -186,194 +180,16 @@ export class WorldRoom extends Room<{ state: WorldState }> {
   onDispose() {
     this.playerInputs.clear();
     this.identities.clear();
-    this.attackReadyAt.clear();
-    this.enemyCooldowns.clear();
-    this.playerRespawns.clear();
     this.lootExpiry.clear();
-    this.enemyRespawns = [];
   }
 
-  private handleAttack(client: Client, message: unknown): void {
-    const player = this.state.players.get(client.sessionId);
-    if (!player || player.dead) {
-      return;
-    }
-
-    const now = Date.now();
-    const readyAt = this.attackReadyAt.get(client.sessionId) ?? 0;
-    if (now < readyAt) {
-      return;
-    }
-    this.attackReadyAt.set(client.sessionId, now + PLAYER_ATTACK_COOLDOWN_MS);
-
-    const yaw = sanitizeYaw(message);
-    player.yaw = yaw;
-
-    if (isInsideSafeZone(player)) {
-      return;
-    }
-
-    const enemyHits: string[] = [];
-    for (const [enemyId, enemy] of this.state.enemies) {
-      if (isInAttackArc(player, yaw, enemy)) {
-        enemyHits.push(enemyId);
-      }
-    }
-    for (const enemyId of enemyHits) {
-      const enemy = this.state.enemies.get(enemyId);
-      if (enemy) {
-        this.damageEnemy(client.sessionId, player.name, enemyId, enemy, PLAYER_ATTACK_DAMAGE);
-      }
-    }
-
-    const playerHits: string[] = [];
-    for (const [otherId, other] of this.state.players) {
-      if (otherId === client.sessionId || other.dead || isInsideSafeZone(other)) {
-        continue;
-      }
-      if (isInAttackArc(player, yaw, other)) {
-        playerHits.push(otherId);
-      }
-    }
-    for (const otherId of playerHits) {
-      const other = this.state.players.get(otherId);
-      if (other) {
-        this.damagePlayer(otherId, other, PLAYER_ATTACK_DAMAGE, client.sessionId, player.name);
-      }
-    }
-  }
-
-  private damageEnemy(
-    sourceId: string,
-    sourceName: string,
-    enemyId: string,
-    enemy: EnemyState,
-    damage: number,
-  ): void {
-    const result = applyDamage(enemy.hp, damage);
-    enemy.hp = result.hp;
-
-    this.broadcast("combat", {
-      kind: "hit",
-      source: sourceName,
-      sourceId,
-      target: enemy.name,
-      targetId: enemyId,
-      damage,
-      x: enemy.x,
-      z: enemy.z,
-    } satisfies CombatEvent);
-
-    if (result.died) {
-      this.killEnemy(sourceId, sourceName, enemyId, enemy);
-    }
-  }
-
-  private killEnemy(sourceId: string, sourceName: string, enemyId: string, enemy: EnemyState): void {
-    const definition = getEnemy(enemy.type);
-    const amount = definition ? randomInt(definition.coinMin, definition.coinMax) : 0;
-
-    if (amount > 0) {
-      const lootId = `loot-${++this.lootSeq}`;
-      const loot = new LootState({ id: lootId, x: enemy.x, z: enemy.z, amount });
-      this.state.loot.set(lootId, loot);
-      this.lootExpiry.set(lootId, Date.now() + LOOT_LIFETIME_MS);
-    }
-
-    this.state.enemies.delete(enemyId);
-    this.enemyCooldowns.delete(enemyId);
-    this.enemyRespawns.push(Date.now() + ENEMY_RESPAWN_MS);
-
-    this.broadcast("combat", {
-      kind: "death",
-      source: sourceName,
-      sourceId,
-      target: enemy.name,
-      targetId: enemyId,
-      x: enemy.x,
-      z: enemy.z,
-    } satisfies CombatEvent);
-  }
-
-  private damagePlayer(
-    targetId: string,
-    target: PlayerState,
-    damage: number,
-    sourceId: string,
-    sourceName: string,
-  ): void {
-    if (target.dead) {
-      return;
-    }
-
-    const result = applyDamage(target.hp, damage);
-    target.hp = result.hp;
-
-    this.broadcast("combat", {
-      kind: "hit",
-      source: sourceName,
-      sourceId,
-      target: target.name,
-      targetId,
-      damage,
-      x: target.x,
-      z: target.z,
-    } satisfies CombatEvent);
-
-    if (result.died) {
-      this.killPlayer(targetId, target, sourceId, sourceName);
-    }
-  }
-
-  private killPlayer(
-    sessionId: string,
-    player: PlayerState,
-    sourceId: string,
-    sourceName: string,
-  ): void {
-    player.dead = true;
-    player.hp = 0;
-
-    if (player.coins > 0) {
-      const lootId = `loot-${++this.lootSeq}`;
-      const loot = new LootState({ id: lootId, x: player.x, z: player.z, amount: player.coins });
-      this.state.loot.set(lootId, loot);
-      this.lootExpiry.set(lootId, Date.now() + LOOT_LIFETIME_MS);
-      player.coins = 0;
-    }
-
-    this.playerInputs.set(sessionId, { x: 0, z: 0, yaw: player.yaw });
-    this.playerRespawns.set(sessionId, Date.now() + PLAYER_RESPAWN_MS);
-
-    this.broadcast("combat", {
-      kind: "death",
-      source: sourceName,
-      sourceId,
-      target: player.name,
-      targetId: sessionId,
-      x: player.x,
-      z: player.z,
-    } satisfies CombatEvent);
-  }
-
-  private spawnEnemy(): void {
-    const type: EnemyId = Math.random() < SCAVENGER_CHANCE ? "scavenger" : "brute";
-    const definition = ENEMIES[type];
-    const spawn = randomEnemySpawn();
-    const id = `enemy-${++this.enemySeq}`;
-
-    const enemy = new EnemyState({
-      id,
-      type: definition.id,
-      name: definition.name,
-      x: spawn.x,
-      z: spawn.z,
-      yaw: Math.atan2(-spawn.x, -spawn.z),
-      hp: definition.maxHp,
-      maxHp: definition.maxHp,
-    });
-
-    this.state.enemies.set(id, enemy);
+  private spawnPickup(): void {
+    const spawn = randomPickupSpawn();
+    const amount = randomInt(PICKUP_AMOUNT_MIN, PICKUP_AMOUNT_MAX);
+    const lootId = `cache-${++this.lootSeq}`;
+    const loot = new LootState({ id: lootId, x: spawn.x, z: spawn.z, amount });
+    this.state.loot.set(lootId, loot);
+    this.lootExpiry.set(lootId, Date.now() + PICKUP_LIFETIME_MS);
   }
 
   private update(): void {
@@ -381,29 +197,29 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     this.state.serverTime = now;
 
     for (const [sessionId, player] of this.state.players) {
-      if (player.dead) {
-        continue;
-      }
       const input = this.playerInputs.get(sessionId);
       if (!input) {
         continue;
       }
-      const next = stepPosition(
+      const stepped = stepPosition(
         { x: player.x, z: player.z },
         { x: input.x, z: input.z },
         TICK_SECONDS,
         PLAYER_SPEED,
         WORLD_RADIUS,
       );
+      const next = resolveWorldCollision(stepped, PLAYER_RADIUS);
       player.x = next.x;
       player.z = next.z;
       player.yaw = input.yaw;
     }
 
-    this.updateEnemies(now);
-    this.updateLoot(now);
-    this.updateRespawns(now);
-    this.updateEnemyRespawns(now);
+    this.updatePickups(now);
+
+    if (this.state.loot.size < MAX_PICKUPS && now - this.lastPickupAt >= PICKUP_INTERVAL_MS) {
+      this.lastPickupAt = now;
+      this.spawnPickup();
+    }
 
     if (now - this.lastPersistAt >= PERSIST_INTERVAL_MS) {
       this.lastPersistAt = now;
@@ -411,68 +227,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     }
   }
 
-  private updateEnemies(now: number): void {
-    for (const [enemyId, enemy] of this.state.enemies) {
-      const definition = getEnemy(enemy.type);
-      if (!definition) {
-        continue;
-      }
-
-      let targetId = "";
-      let target: PlayerState | null = null;
-      let best = Number.POSITIVE_INFINITY;
-
-      for (const [sessionId, player] of this.state.players) {
-        if (player.dead || isInsideSafeZone(player)) {
-          continue;
-        }
-        const distance = distanceBetween(enemy, player);
-        if (distance <= definition.aggroRadius && distance < best) {
-          best = distance;
-          targetId = sessionId;
-          target = player;
-        }
-      }
-
-      if (target === null) {
-        enemy.targetId = "";
-        continue;
-      }
-
-      enemy.targetId = targetId;
-      const dx = target.x - enemy.x;
-      const dz = target.z - enemy.z;
-      const distance = Math.hypot(dx, dz);
-      if (distance < 0.001) {
-        continue;
-      }
-      enemy.yaw = Math.atan2(-dx, -dz);
-
-      if (distance > definition.attackRange) {
-        const next = stepPosition(
-          enemy,
-          { x: dx / distance, z: dz / distance },
-          TICK_SECONDS,
-          definition.speed,
-          WORLD_RADIUS,
-        );
-        if (!isInsideSafeZone(next)) {
-          enemy.x = next.x;
-          enemy.z = next.z;
-        }
-        continue;
-      }
-
-      const readyAt = this.enemyCooldowns.get(enemyId) ?? 0;
-      if (now < readyAt) {
-        continue;
-      }
-      this.enemyCooldowns.set(enemyId, now + definition.attackCooldownMs);
-      this.damagePlayer(targetId, target, definition.damage, enemyId, enemy.name);
-    }
-  }
-
-  private updateLoot(now: number): void {
+  private updatePickups(now: number): void {
     const collected: string[] = [];
 
     for (const [lootId, loot] of this.state.loot) {
@@ -484,15 +239,14 @@ export class WorldRoom extends Room<{ state: WorldState }> {
 
       let pickerId = "";
       let picker: PlayerState | null = null;
+      let best = PICKUP_RADIUS;
 
       for (const [sessionId, player] of this.state.players) {
-        if (player.dead) {
-          continue;
-        }
-        if (distanceBetween(player, loot) <= LOOT_PICKUP_RADIUS) {
+        const distance = distanceBetween(player, loot);
+        if (distance <= best) {
+          best = distance;
           pickerId = sessionId;
           picker = player;
-          break;
         }
       }
 
@@ -516,56 +270,6 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       this.state.loot.delete(lootId);
       this.lootExpiry.delete(lootId);
     }
-  }
-
-  private updateRespawns(now: number): void {
-    const ready: string[] = [];
-    for (const [sessionId, at] of this.playerRespawns) {
-      if (now >= at) {
-        ready.push(sessionId);
-      }
-    }
-
-    for (const sessionId of ready) {
-      this.playerRespawns.delete(sessionId);
-      const player = this.state.players.get(sessionId);
-      if (!player) {
-        continue;
-      }
-
-      const spawn = randomSpawn();
-      player.x = spawn.x;
-      player.z = spawn.z;
-      player.hp = player.maxHp;
-      player.dead = false;
-      this.playerInputs.set(sessionId, { x: 0, z: 0, yaw: player.yaw });
-
-      this.broadcast("combat", {
-        kind: "respawn",
-        source: player.name,
-        sourceId: sessionId,
-        target: player.name,
-        targetId: sessionId,
-        x: player.x,
-        z: player.z,
-      } satisfies CombatEvent);
-    }
-  }
-
-  private updateEnemyRespawns(now: number): void {
-    if (this.enemyRespawns.length === 0) {
-      return;
-    }
-
-    const remaining: number[] = [];
-    for (const at of this.enemyRespawns) {
-      if (now >= at) {
-        this.spawnEnemy();
-      } else {
-        remaining.push(at);
-      }
-    }
-    this.enemyRespawns = remaining;
   }
 
   private async persistAll(): Promise<void> {

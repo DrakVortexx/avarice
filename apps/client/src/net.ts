@@ -1,10 +1,5 @@
 import { Client } from "@colyseus/sdk";
-import {
-  WORLD_ROOM_NAME,
-  type ChatEvent,
-  type CombatEvent,
-  type LootEvent,
-} from "@avarice/shared";
+import { WORLD_ROOM_NAME, type ChatEvent, type LootEvent } from "@avarice/shared";
 import { SERVER_URL } from "./config.js";
 
 export interface PlayerView {
@@ -12,10 +7,7 @@ export interface PlayerView {
   x: number;
   z: number;
   yaw: number;
-  hp: number;
-  maxHp: number;
   coins: number;
-  dead: boolean;
 }
 
 export interface PlayerSnapshot {
@@ -24,17 +16,6 @@ export interface PlayerSnapshot {
   x: number;
   z: number;
   yaw: number;
-}
-
-export interface EnemySnapshot {
-  id: string;
-  type: string;
-  name: string;
-  x: number;
-  z: number;
-  yaw: number;
-  hp: number;
-  maxHp: number;
 }
 
 export interface LootSnapshot {
@@ -46,22 +27,15 @@ export interface LootSnapshot {
 
 export interface LocalStats {
   name: string;
-  hp: number;
-  maxHp: number;
   coins: number;
-  dead: boolean;
 }
 
 export interface NetHandlers {
   onChat: (event: ChatEvent) => void;
-  onCombat: (event: CombatEvent) => void;
   onLoot: (event: LootEvent) => void;
   onPlayerAdd: (player: PlayerSnapshot) => void;
   onPlayerUpdate: (player: PlayerSnapshot) => void;
   onPlayerRemove: (id: string) => void;
-  onEnemyAdd: (enemy: EnemySnapshot) => void;
-  onEnemyUpdate: (enemy: EnemySnapshot) => void;
-  onEnemyRemove: (id: string) => void;
   onLootAdd: (loot: LootSnapshot) => void;
   onLootRemove: (id: string) => void;
   onLocalPosition: (x: number, z: number) => void;
@@ -74,19 +48,8 @@ export interface NetHandlers {
 export interface Net {
   sessionId: string;
   sendInput: (x: number, z: number, yaw: number) => void;
-  sendAttack: (yaw: number) => void;
   sendChat: (text: string) => void;
   leave: () => void;
-}
-
-interface EnemyView {
-  type: string;
-  name: string;
-  x: number;
-  z: number;
-  yaw: number;
-  hp: number;
-  maxHp: number;
 }
 
 interface LootView {
@@ -98,9 +61,6 @@ interface LootView {
 interface RoomStateView {
   players: {
     forEach: (callback: (player: PlayerView, sessionId: string) => void) => void;
-  };
-  enemies?: {
-    forEach: (callback: (enemy: EnemyView, id: string) => void) => void;
   };
   loot?: {
     forEach: (callback: (loot: LootView, id: string) => void) => void;
@@ -114,7 +74,6 @@ export async function connect(accessToken: string, handlers: NetHandlers): Promi
   handlers.onConnected(room.sessionId);
 
   let knownPlayers = new Set<string>();
-  let knownEnemies = new Set<string>();
   let knownLoot = new Set<string>();
 
   room.onStateChange((state: RoomStateView) => {
@@ -125,13 +84,7 @@ export async function connect(accessToken: string, handlers: NetHandlers): Promi
 
       if (sessionId === room.sessionId) {
         handlers.onLocalPosition(player.x, player.z);
-        handlers.onLocalStats({
-          name: player.name,
-          hp: player.hp,
-          maxHp: player.maxHp,
-          coins: player.coins,
-          dead: player.dead,
-        });
+        handlers.onLocalStats({ name: player.name, coins: player.coins });
         return;
       }
 
@@ -157,33 +110,6 @@ export async function connect(accessToken: string, handlers: NetHandlers): Promi
     }
     knownPlayers = seenPlayers;
 
-    const seenEnemies = new Set<string>();
-    state.enemies?.forEach((enemy, id) => {
-      seenEnemies.add(id);
-      const snapshot: EnemySnapshot = {
-        id,
-        type: enemy.type,
-        name: enemy.name,
-        x: enemy.x,
-        z: enemy.z,
-        yaw: enemy.yaw,
-        hp: enemy.hp,
-        maxHp: enemy.maxHp,
-      };
-
-      if (knownEnemies.has(id)) {
-        handlers.onEnemyUpdate(snapshot);
-      } else {
-        handlers.onEnemyAdd(snapshot);
-      }
-    });
-    for (const id of knownEnemies) {
-      if (!seenEnemies.has(id)) {
-        handlers.onEnemyRemove(id);
-      }
-    }
-    knownEnemies = seenEnemies;
-
     const seenLoot = new Set<string>();
     state.loot?.forEach((loot, id) => {
       seenLoot.add(id);
@@ -203,10 +129,6 @@ export async function connect(accessToken: string, handlers: NetHandlers): Promi
     handlers.onChat(event);
   });
 
-  room.onMessage("combat", (event: CombatEvent) => {
-    handlers.onCombat(event);
-  });
-
   room.onMessage("loot", (event: LootEvent) => {
     handlers.onLoot(event);
   });
@@ -222,7 +144,6 @@ export async function connect(accessToken: string, handlers: NetHandlers): Promi
   return {
     sessionId: room.sessionId,
     sendInput: (x, z, yaw) => room.send("move", { x, z, yaw }),
-    sendAttack: (yaw) => room.send("attack", { yaw }),
     sendChat: (text) => room.send("chat", { text }),
     leave: () => {
       void room.leave();

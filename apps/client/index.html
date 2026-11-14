@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="Avarice - a multiplayer 2D economy MMO." />
+    <meta name="description" content="Avarice - a multiplayer open-world 2D economy MMO." />
     <title>Avarice</title>
     <link rel="stylesheet" href="/src/styles.css" />
   </head>
@@ -18,18 +18,15 @@
           <span id="players" class="players">0 online</span>
         </div>
         <div class="stats">
-          <div class="hp">
-            <div class="hp-track"><div id="hp-fill" class="hp-fill"></div></div>
-            <span id="hp-text" class="hp-text">100 / 100</span>
-          </div>
+          <span class="coins-label">Purse</span>
           <span id="coins" class="coins">100c</span>
         </div>
       </section>
 
       <section class="panel top-right">
         <div class="control"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move</div>
-        <div class="control"><kbd>Click</kbd><kbd>Space</kbd> attack</div>
         <div class="control"><kbd>Enter</kbd> chat</div>
+        <div class="control hint">Walk over coin caches to collect them</div>
         <button id="logout" class="logout" type="button">Log out</button>
       </section>
 
@@ -73,13 +70,6 @@
           </button>
         </div>
       </form>
-    </div>
-
-    <div id="death" class="death hidden">
-      <div class="death-card">
-        <h2>You died</h2>
-        <p>Your coins were left behind. Respawning at the plaza&hellip;</p>
-      </div>
     </div>
 
     <div id="loading">Loading Avarice&hellip;</div>
