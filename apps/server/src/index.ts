@@ -62,6 +62,8 @@ const server = defineServer({
           username: identity.username,
           displayName: identity.displayName,
           coins: profile?.coins ?? 0,
+          level: profile?.level ?? 1,
+          isAdmin: profile?.isAdmin ?? false,
           saved: Boolean(profile),
         });
       } catch {

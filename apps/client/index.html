@@ -25,12 +25,37 @@
 
       <section class="panel top-right">
         <div class="control"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move</div>
+        <div class="control"><kbd>Space</kbd> attack</div>
+        <div class="control"><kbd>E</kbd> interact &middot; <kbd>I</kbd> bag &middot; <kbd>B</kbd> bazaar</div>
         <div class="control"><kbd>Enter</kbd> chat</div>
-        <div class="control hint">Walk over coin caches to collect them</div>
         <button id="logout" class="logout" type="button">Leave</button>
       </section>
 
       <section id="log" class="panel bottom-left" aria-live="polite"></section>
+
+      <section class="panel vitals">
+        <div class="vitals-top">
+          <span id="vitals-level" class="vitals-level">Lv 1</span>
+          <div class="bar hp">
+            <div id="hp-fill" class="bar-fill hp"></div>
+            <span id="hp-text" class="bar-text">100 / 100</span>
+          </div>
+        </div>
+        <div class="bar xp">
+          <div id="xp-fill" class="bar-fill xp"></div>
+          <span id="xp-text" class="bar-text">0 / 120 XP</span>
+        </div>
+      </section>
+
+      <section class="panel actionbar">
+        <button id="btn-attack" type="button" class="action">Attack</button>
+        <button id="btn-interact" type="button" class="action">Interact</button>
+        <button id="btn-inventory" type="button" class="action">Bag</button>
+        <button id="btn-bazaar" type="button" class="action">Bazaar</button>
+        <button id="btn-admin" type="button" class="action hidden">Admin</button>
+      </section>
+
+      <div id="prompt" class="prompt hidden"></div>
 
       <form id="chat-form" class="chat hidden" autocomplete="off">
         <input
@@ -42,6 +67,78 @@
         />
       </form>
     </div>
+
+    <aside id="inventory" class="drawer hidden">
+      <header class="drawer-head">
+        <h2>Bag</h2>
+        <button id="inv-close" class="ghost" type="button">&times;</button>
+      </header>
+      <div class="equip-grid" id="equip-grid"></div>
+      <div class="inv-list" id="inv-list"></div>
+      <footer class="drawer-foot"><span id="inv-coins">0c</span></footer>
+    </aside>
+
+    <div id="shop" class="modal hidden">
+      <div class="modal-card">
+        <header class="modal-head">
+          <h2 id="shop-title">Merchant</h2>
+          <button id="shop-close" class="ghost" type="button">&times;</button>
+        </header>
+        <div class="shop-cols">
+          <div>
+            <h3 class="col-title">Buy</h3>
+            <div class="shop-list" id="shop-list"></div>
+          </div>
+          <div>
+            <h3 class="col-title">Sell</h3>
+            <div class="shop-list" id="shop-sell-list"></div>
+          </div>
+        </div>
+        <div class="modal-note" id="shop-note"></div>
+      </div>
+    </div>
+
+    <div id="bazaar" class="modal hidden">
+      <div class="modal-card wide">
+        <header class="modal-head">
+          <h2>Bazaar</h2>
+          <button id="bazaar-close" class="ghost" type="button">&times;</button>
+        </header>
+        <div class="bazaar-list" id="bazaar-list"></div>
+        <form id="bazaar-form" class="bazaar-form" autocomplete="off">
+          <select id="bazaar-item" aria-label="Item to list"></select>
+          <input id="bazaar-qty" type="number" min="1" value="1" aria-label="Quantity" />
+          <input id="bazaar-price" type="number" min="1" value="10" aria-label="Price per unit" />
+          <button type="submit">List</button>
+        </form>
+        <div class="modal-note" id="bazaar-note"></div>
+      </div>
+    </div>
+
+    <div id="admin" class="modal hidden">
+      <div class="modal-card">
+        <header class="modal-head">
+          <h2>Admin Console</h2>
+          <button id="admin-close" class="ghost" type="button">&times;</button>
+        </header>
+        <div class="admin-log" id="admin-log"></div>
+        <form id="admin-form" class="admin-form" autocomplete="off">
+          <input id="admin-input" type="text" placeholder="coins 1000" aria-label="Admin command" />
+          <button type="submit">Run</button>
+        </form>
+        <div class="modal-note">coins &lt;n&gt; &middot; item &lt;id&gt; [qty] &middot; heal &middot; kill &lt;name&gt; &middot; kick &lt;name&gt; &middot; tp &lt;x&gt; &lt;z&gt; &middot; broadcast &lt;msg&gt;</div>
+      </div>
+    </div>
+
+    <div id="death" class="death-overlay hidden">
+      <div class="death-card">
+        <h2>You died</h2>
+        <p id="death-by">You were slain.</p>
+        <p id="death-timer" class="death-timer">Respawning&hellip;</p>
+      </div>
+    </div>
+
+    <div id="notices" class="notices" aria-live="polite"></div>
 
     <div id="auth" class="auth-overlay">
       <form id="auth-form" class="auth-card" autocomplete="off">
@@ -79,11 +176,15 @@
         <div class="dash-stats">
           <div class="dash-stat">
             <span class="dash-stat-label">Purse</span>
-            <span id="dash-coins" class="dash-stat-value">…</span>
+            <span id="dash-coins" class="dash-stat-value">&hellip;</span>
+          </div>
+          <div class="dash-stat">
+            <span class="dash-stat-label">Level</span>
+            <span id="dash-level" class="dash-stat-value">&hellip;</span>
           </div>
           <div class="dash-stat">
             <span class="dash-stat-label">Progress</span>
-            <span id="dash-save" class="dash-stat-value">…</span>
+            <span id="dash-save" class="dash-stat-value">&hellip;</span>
           </div>
         </div>
         <div id="dash-note" class="auth-error hidden"></div>
@@ -92,8 +193,9 @@
           <button id="dash-logout" type="button" class="ghost">Log out</button>
         </div>
         <p class="dash-hint">
-          Move with <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>, chat with <kbd>Enter</kbd>.
-          Walk over coin caches to collect them.
+          Move with <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>, attack with <kbd>Space</kbd>,
+          interact with <kbd>E</kbd>. Gather resources, trade, and watch your back &mdash; it is open
+          PvP.
         </p>
       </div>
     </div>

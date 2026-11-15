@@ -1,11 +1,24 @@
 import type { Ticker } from "pixi.js";
 import type { Session } from "@supabase/supabase-js";
-import { formatCoins, type ChatEvent, type LootEvent } from "@avarice/shared";
+import {
+  formatCoins,
+  getItem,
+  type AdminResult,
+  type BazaarView,
+  type ChatEvent,
+  type CombatEvent,
+  type DeathEvent,
+  type LootEvent,
+  type NoticeEvent,
+  type SelfState,
+  type ShopView,
+} from "@avarice/shared";
 import { hasSupabaseConfig, SERVER_URL } from "./config.js";
 import { getCurrentSession, signIn, signOut, signUp, validatePassword, validateUsername } from "./auth.js";
 import { fetchProfile } from "./api.js";
 import { Game } from "./game.js";
 import { createInput } from "./input.js";
+import { GameUi } from "./ui.js";
 import {
   connect,
   type LocalStats,
@@ -30,7 +43,6 @@ const logEl = must<HTMLDivElement>("#log");
 const chatForm = must<HTMLFormElement>("#chat-form");
 const chatInput = must<HTMLInputElement>("#chat-input");
 const logoutButton = must<HTMLButtonElement>("#logout");
-const coinsEl = must<HTMLSpanElement>("#coins");
 
 const authEl = must<HTMLDivElement>("#auth");
 const authForm = must<HTMLFormElement>("#auth-form");
@@ -43,6 +55,7 @@ const authToggle = must<HTMLButtonElement>("#auth-toggle");
 const dashboardEl = must<HTMLDivElement>("#dashboard");
 const dashUsername = must<HTMLElement>("#dash-username");
 const dashCoins = must<HTMLSpanElement>("#dash-coins");
+const dashLevel = must<HTMLSpanElement>("#dash-level");
 const dashSave = must<HTMLSpanElement>("#dash-save");
 const dashNote = must<HTMLDivElement>("#dash-note");
 const dashPlay = must<HTMLButtonElement>("#dash-play");
@@ -57,6 +70,21 @@ let authMode: "signin" | "signup" = "signin";
 let sendAccumulator = 0;
 let accessToken = "";
 let currentSession: Session | null = null;
+
+const ui = new GameUi({
+  onAttack: () => net?.sendAttack(),
+  onInteract: () => interact(),
+  onUseItem: (itemId) => net?.sendUse(itemId),
+  onEquip: (itemId, slot) => net?.sendEquip(itemId, slot),
+  onUnequip: (slot) => net?.sendEquip(null, slot),
+  onShopBuy: (shopId, itemId) => net?.sendShopBuy(shopId, itemId, 1),
+  onShopSell: (shopId, itemId) => net?.sendShopSell(shopId, itemId, 1),
+  onOpenBazaar: () => net?.sendBazaarQuery(),
+  onBazaarList: (itemId, quantity, price) => net?.sendBazaarList(itemId, quantity, price),
+  onBazaarBuy: (listingId) => net?.sendBazaarBuy(listingId, 1),
+  onBazaarCancel: (listingId) => net?.sendBazaarCancel(listingId),
+  onAdmin: (command) => net?.sendAdmin(command),
+});
 
 const isAuthVisible = (): boolean => !authEl.classList.contains("hidden");
 const isDashboardVisible = (): boolean => !dashboardEl.classList.contains("hidden");
@@ -170,6 +198,7 @@ async function showDashboard(session: Session): Promise<void> {
   const meta = session.user.user_metadata as { username?: string } | undefined;
   dashUsername.textContent = meta?.username ?? session.user.email?.split("@")[0] ?? "wanderer";
   dashCoins.textContent = "…";
+  dashLevel.textContent = "…";
   dashSave.textContent = "…";
   dashSave.className = "dash-stat-value";
   dashboardEl.classList.remove("hidden");
@@ -177,6 +206,7 @@ async function showDashboard(session: Session): Promise<void> {
   const result = await fetchProfile(accessToken);
   if (!result.ok) {
     dashCoins.textContent = "—";
+    dashLevel.textContent = "—";
     dashSave.textContent = "Not saved";
     dashSave.className = "dash-stat-value bad";
     setDashNote(describeProfileFailure(result.reason));
@@ -186,6 +216,7 @@ async function showDashboard(session: Session): Promise<void> {
   const profile = result.profile;
   dashUsername.textContent = profile.displayName;
   dashCoins.textContent = formatCoins(profile.coins);
+  dashLevel.textContent = `Lv ${profile.level}`;
   if (profile.saved) {
     dashSave.textContent = "Saved";
     dashSave.className = "dash-stat-value ok";
@@ -193,6 +224,16 @@ async function showDashboard(session: Session): Promise<void> {
     dashSave.textContent = "Not saved";
     dashSave.className = "dash-stat-value bad";
     setDashNote("Progress is not being saved. The server database is not connected.");
+  }
+}
+
+function interact(): void {
+  if (!net || !isPlaying()) {
+    return;
+  }
+  const shop = game.nearestShop();
+  if (shop) {
+    net.sendShopOpen(shop.id);
   }
 }
 
@@ -206,6 +247,8 @@ function makeHandlers() {
     },
     onDisconnected: (code: number): void => {
       net = null;
+      ui.closeAll();
+      ui.clearDeath();
       setStatus("Disconnected", "error");
       addLog("system", "Avarice", `Disconnected (${code}).`);
       updatePlayerCount();
@@ -222,26 +265,82 @@ function makeHandlers() {
       if (event.sessionId !== mySessionId) {
         return;
       }
-      game.spawnFloatingText(event.x, event.z, `+${event.amount}c`, 0xffe9a8);
-      systemLog(`Found ${formatCoins(event.amount)} (${formatCoins(event.coins)} total).`);
+      if (event.itemId) {
+        const item = getItem(event.itemId);
+        const name = item?.name ?? event.itemId;
+        game.spawnFloatingText(event.x, event.z, `+${event.quantity ?? 1} ${name}`, 0xb79bff);
+        systemLog(`Picked up ${event.quantity ?? 1}× ${name}.`);
+      } else {
+        game.spawnFloatingText(event.x, event.z, `+${event.amount}c`, 0xffe9a8);
+        systemLog(`Found ${formatCoins(event.amount)} (${formatCoins(event.coins)} total).`);
+      }
+    },
+    onCombat: (event: CombatEvent): void => {
+      game.spawnFloatingText(event.x, event.z, `-${event.damage}`, 0xff7a7a);
+      if (event.attackerId === mySessionId) {
+        systemLog(`You hit ${event.targetName} for ${event.damage}.`);
+      }
+    },
+    onDeath: (event: DeathEvent): void => {
+      ui.showDeath(event.byName, event.respawnAt);
+    },
+    onSelf: (state: SelfState): void => {
+      ui.setSelf(state);
+    },
+    onShop: (view: ShopView): void => {
+      ui.setShop(view);
+    },
+    onBazaar: (view: BazaarView): void => {
+      ui.setBazaar(view);
+    },
+    onNotice: (event: NoticeEvent): void => {
+      ui.notice(event.kind, event.text);
+    },
+    onAdminResult: (result: AdminResult): void => {
+      ui.appendAdminLog(result.ok, result.text);
     },
     onLocalPosition: (x: number, z: number): void => game.setServerPosition(x, z),
     onLocalStats: (stats: LocalStats): void => {
-      coinsEl.textContent = formatCoins(stats.coins);
+      ui.setStats({
+        name: stats.name,
+        coins: stats.coins,
+        hp: stats.hp,
+        maxHp: stats.maxHp,
+        level: stats.level,
+        alive: stats.alive,
+      });
+      game.setLocalHealth(stats.hp, stats.maxHp, stats.alive);
     },
     onPlayerAdd: (player: PlayerSnapshot): void => {
-      game.addRemote(player.id, player.name, player.x, player.z, player.yaw);
+      game.addRemote(
+        player.id,
+        player.name,
+        player.x,
+        player.z,
+        player.yaw,
+        player.hp,
+        player.maxHp,
+        player.alive,
+      );
       updatePlayerCount();
     },
     onPlayerUpdate: (player: PlayerSnapshot): void => {
-      game.updateRemote(player.id, player.x, player.z, player.yaw);
+      game.updateRemote(
+        player.id,
+        player.x,
+        player.z,
+        player.yaw,
+        player.hp,
+        player.maxHp,
+        player.alive,
+      );
     },
     onPlayerRemove: (id: string): void => {
       game.removeRemote(id);
       updatePlayerCount();
     },
     onLootAdd: (loot: LootSnapshot): void => {
-      game.addLoot(loot.id, loot.x, loot.z, loot.amount);
+      game.addLoot(loot.id, loot.x, loot.z, loot.amount, loot.itemId, loot.quantity);
     },
     onLootRemove: (id: string): void => {
       game.removeLoot(id);
@@ -249,10 +348,10 @@ function makeHandlers() {
   };
 }
 
-async function startGame(accessToken: string): Promise<void> {
+async function startGame(token: string): Promise<void> {
   setStatus("Connecting…", "connecting");
   try {
-    net = await connect(accessToken, makeHandlers());
+    net = await connect(token, makeHandlers());
     updatePlayerCount();
   } catch (error) {
     setStatus("Cannot reach server", "error");
@@ -270,6 +369,13 @@ function frame(ticker: Ticker): void {
 
   game.updateLocal(dt, movement);
   game.render(dt);
+
+  if (isPlaying() && !ui.isAnyOpen()) {
+    const shop = game.nearestShop();
+    ui.setPrompt(shop ? `Press E — ${shop.name}` : null);
+  } else {
+    ui.setPrompt(null);
+  }
 
   if (net) {
     sendAccumulator += dt;
@@ -350,6 +456,8 @@ authToggle.addEventListener("click", () => {
 logoutButton.addEventListener("click", () => {
   net?.leave();
   net = null;
+  ui.closeAll();
+  ui.clearDeath();
   if (currentSession) {
     void showDashboard(currentSession);
   }
@@ -376,6 +484,12 @@ chatForm.addEventListener("submit", (event) => {
   closeChat();
 });
 
+canvas.addEventListener("pointerdown", () => {
+  if (isPlaying() && !ui.isAnyOpen()) {
+    net?.sendAttack();
+  }
+});
+
 window.addEventListener("keydown", (event) => {
   if (document.activeElement === chatInput) {
     if (event.key === "Escape") {
@@ -391,6 +505,47 @@ window.addEventListener("keydown", (event) => {
   if (event.key === "Enter") {
     event.preventDefault();
     openChat();
+    return;
+  }
+
+  if (event.key === "Escape") {
+    ui.closeAll();
+    return;
+  }
+
+  const target = event.target as HTMLElement | null;
+  const typing =
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement ||
+    target instanceof HTMLSelectElement;
+  if (typing) {
+    return;
+  }
+
+  if (event.code === "Space") {
+    event.preventDefault();
+    if (!ui.isAnyOpen()) {
+      net?.sendAttack();
+    }
+    return;
+  }
+
+  switch (event.key.toLowerCase()) {
+    case "e":
+      interact();
+      break;
+    case "i":
+      ui.toggleInventory();
+      break;
+    case "b":
+      if (ui.isAnyOpen()) {
+        ui.closeAll();
+      } else {
+        ui.openBazaar();
+      }
+      break;
+    default:
+      break;
   }
 });
 

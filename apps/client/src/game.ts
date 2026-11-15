@@ -6,14 +6,18 @@ import {
   PLAYER_RADIUS,
   PLAYER_SPEED,
   PLAZA_RADIUS,
+  SHOPS,
   WORLD_RADIUS,
   resolveWorldCollision,
   stepPosition,
+  type ShopDefinition,
 } from "@avarice/shared";
 import { buildMap } from "./map.js";
-import { createAvatar, createLootPile, type Avatar, type LootPile } from "./entities.js";
+import { createAvatar, createItemPile, createLootPile, createShopMarker, type Avatar, type LootPile } from "./entities.js";
 import { PIXELS_PER_UNIT } from "./render.js";
 import type { Movement } from "./input.js";
+
+const SHOP_INTERACT_RANGE = 7;
 
 const EFFECT_TEXT_STYLE = {
   fontFamily: "Segoe UI, system-ui, sans-serif",
@@ -46,9 +50,13 @@ export class Game {
   private readonly minimapDots = new Graphics();
   private local: Avatar | null = null;
   private readonly remotes = new Map<string, Avatar>();
-  private readonly remoteTargets = new Map<string, { x: number; z: number; yaw: number }>();
+  private readonly remoteTargets = new Map<
+    string,
+    { x: number; z: number; yaw: number; hp: number; maxHp: number; alive: boolean }
+  >();
   private readonly lootPiles = new Map<string, LootPile>();
   private readonly effects: Effect[] = [];
+  private localHealth = { hp: 100, maxHp: 100, alive: true };
 
   readonly localPosition = { x: 0, z: 0 };
   private readonly serverPosition = { x: 0, z: 0 };
@@ -73,6 +81,12 @@ export class Game {
 
     this.world.addChild(buildMap());
     this.app.stage.addChild(this.world);
+
+    for (const shop of SHOPS) {
+      const marker = createShopMarker(shop.name);
+      marker.container.position.set(shop.x, shop.z);
+      this.world.addChild(marker.container);
+    }
 
     this.local = createAvatar("You", 0x7fd1b9);
     this.world.addChild(this.local.container);
@@ -147,6 +161,7 @@ export class Game {
     if (this.local) {
       this.local.setPosition(this.localPosition.x, this.localPosition.z);
       this.local.setFacing(this.yaw);
+      this.local.setHealth(this.localHealth.hp, this.localHealth.maxHp, this.localHealth.alive);
     }
 
     const smoothing = 1 - Math.exp(-dt * 10);
@@ -158,6 +173,7 @@ export class Game {
       avatar.container.position.x += (target.x - avatar.container.position.x) * smoothing;
       avatar.container.position.y += (target.z - avatar.container.position.y) * smoothing;
       avatar.setFacing(target.yaw);
+      avatar.setHealth(target.hp, target.maxHp, target.alive);
     }
 
     const pulse = 1 + Math.sin(performance.now() / 320) * 0.09;
@@ -260,22 +276,57 @@ export class Game {
     }
   }
 
-  addRemote(id: string, name: string, x: number, z: number, yaw: number): void {
+  addRemote(
+    id: string,
+    name: string,
+    x: number,
+    z: number,
+    yaw: number,
+    hp: number,
+    maxHp: number,
+    alive: boolean,
+  ): void {
     if (this.remotes.has(id)) {
       return;
     }
     const avatar = createAvatar(name);
     avatar.setPosition(x, z);
     avatar.setFacing(yaw);
+    avatar.setHealth(hp, maxHp, alive);
     this.world.addChild(avatar.container);
     this.remotes.set(id, avatar);
-    this.remoteTargets.set(id, { x, z, yaw });
+    this.remoteTargets.set(id, { x, z, yaw, hp, maxHp, alive });
   }
 
-  updateRemote(id: string, x: number, z: number, yaw: number): void {
+  updateRemote(
+    id: string,
+    x: number,
+    z: number,
+    yaw: number,
+    hp: number,
+    maxHp: number,
+    alive: boolean,
+  ): void {
     if (this.remoteTargets.has(id)) {
-      this.remoteTargets.set(id, { x, z, yaw });
+      this.remoteTargets.set(id, { x, z, yaw, hp, maxHp, alive });
     }
+  }
+
+  setLocalHealth(hp: number, maxHp: number, alive: boolean): void {
+    this.localHealth = { hp, maxHp, alive };
+  }
+
+  nearestShop(): ShopDefinition | null {
+    let best: ShopDefinition | null = null;
+    let bestDistance = SHOP_INTERACT_RANGE;
+    for (const shop of SHOPS) {
+      const distance = Math.hypot(this.localPosition.x - shop.x, this.localPosition.z - shop.z);
+      if (distance <= bestDistance) {
+        bestDistance = distance;
+        best = shop;
+      }
+    }
+    return best;
   }
 
   removeRemote(id: string): void {
@@ -287,11 +338,11 @@ export class Game {
     this.remoteTargets.delete(id);
   }
 
-  addLoot(id: string, x: number, z: number, amount: number): void {
+  addLoot(id: string, x: number, z: number, amount: number, itemId = "", quantity = 0): void {
     if (this.lootPiles.has(id)) {
       return;
     }
-    const pile = createLootPile(amount);
+    const pile = itemId ? createItemPile(itemId, quantity) : createLootPile(amount);
     pile.container.position.set(x, z);
     this.world.addChild(pile.container);
     this.lootPiles.set(id, pile);

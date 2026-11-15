@@ -19,4 +19,18 @@ export const PICKUP_AMOUNT_MAX = 42;
 export const PICKUP_LIFETIME_MS = 120_000;
 export const PICKUP_RADIUS = 2.2;
 
+export const BASE_MAX_HP = 100;
+export const HP_PER_LEVEL = 14;
+export const BASE_ATTACK = 6;
+export const ATTACK_RANGE = 2.8;
+export const ATTACK_ARC = Math.PI * 0.85;
+export const ATTACK_COOLDOWN_MS = 650;
+export const RESPAWN_MS = 4_000;
+export const XP_PER_CACHE = 14;
+export const XP_PER_KILL = 45;
+export const XP_PER_LEVEL_BASE = 120;
+export const XP_PER_LEVEL_GROWTH = 1.35;
+export const PVP_COIN_DROP_RATE = 0.4;
+export const INVENTORY_LIMIT = 60;
+
 export const WORLD_ROOM_NAME = "world";

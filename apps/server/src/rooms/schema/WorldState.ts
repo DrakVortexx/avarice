@@ -7,6 +7,10 @@ export const PlayerState = schema(
     z: t.number().default(0),
     yaw: t.number().default(0),
     coins: t.number().default(0),
+    hp: t.number().default(100),
+    maxHp: t.number().default(100),
+    level: t.number().default(1),
+    alive: t.boolean().default(true),
   },
   "PlayerState",
 );
@@ -18,6 +22,8 @@ export const LootState = schema(
     x: t.number().default(0),
     z: t.number().default(0),
     amount: t.number().default(0),
+    itemId: t.string().default(""),
+    quantity: t.number().default(0),
   },
   "LootState",
 );

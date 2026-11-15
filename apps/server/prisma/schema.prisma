@@ -8,15 +8,22 @@ datasource db {
 }
 
 model Player {
-  id          String   @id @default(cuid())
-  authId      String   @unique
-  username    String   @unique
-  displayName String
-  lastX       Float    @default(0)
-  lastZ       Float    @default(0)
-  coins       Int      @default(100)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id              String   @id @default(cuid())
+  authId          String   @unique
+  username        String   @unique
+  displayName     String
+  lastX           Float    @default(0)
+  lastZ           Float    @default(0)
+  coins           Int      @default(100)
+  level           Int      @default(1)
+  xp              Int      @default(0)
+  hp              Int      @default(100)
+  isAdmin         Boolean  @default(false)
+  equippedWeapon  String?
+  equippedArmor   String?
+  equippedTrinket String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   inventory InventoryEntry[]
   listings  BazaarListing[]
@@ -47,13 +54,13 @@ model InventoryEntry {
 }
 
 model BazaarListing {
-  id          String   @id @default(cuid())
-  sellerId    String
-  itemId      String
-  quantity    Int      @default(1)
+  id           String   @id @default(cuid())
+  sellerId     String
+  itemId       String
+  quantity     Int      @default(1)
   pricePerUnit Int
-  status      String   @default("active")
-  createdAt   DateTime @default(now())
+  status       String   @default("active")
+  createdAt    DateTime @default(now())
 
   seller Player @relation(fields: [sellerId], references: [id], onDelete: Cascade)
   item   Item   @relation(fields: [itemId], references: [id])

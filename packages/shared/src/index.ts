@@ -3,5 +3,7 @@ export * from "./economy.js";
 export * from "./items.js";
 export * from "./movement.js";
 export * from "./names.js";
+export * from "./progression.js";
 export * from "./protocol.js";
+export * from "./shops.js";
 export * from "./world.js";

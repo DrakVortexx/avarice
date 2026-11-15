@@ -1,4 +1,5 @@
 import { Container, Graphics, Text } from "pixi.js";
+import { getItem } from "@avarice/shared";
 import { PIXELS_PER_UNIT } from "./render.js";
 
 const PALETTE = [0x7fd1b9, 0xb79bff, 0xffc98a, 0x6fb8a8, 0xd98a5f, 0x8fd6e8, 0xe8c15a, 0xff7a5c];
@@ -16,6 +17,12 @@ export interface Avatar {
   container: Container;
   setPosition: (x: number, z: number) => void;
   setFacing: (yaw: number) => void;
+  setHealth: (hp: number, maxHp: number, alive: boolean) => void;
+  destroy: () => void;
+}
+
+export interface ShopMarker {
+  container: Container;
   destroy: () => void;
 }
 
@@ -109,6 +116,28 @@ export function createAvatar(name: string, color?: number): Avatar {
   container.addChild(body);
   container.addChild(makeLabel(name.slice(0, 16)));
 
+  const healthBar = new Graphics();
+  healthBar.position.y = -1.18;
+  healthBar.visible = false;
+  container.addChild(healthBar);
+
+  const setHealth = (hp: number, maxHp: number, alive: boolean): void => {
+    healthBar.clear();
+    body.alpha = alive ? 1 : 0.4;
+    if (!alive) {
+      healthBar.visible = false;
+      return;
+    }
+    healthBar.visible = true;
+    const ratio = maxHp > 0 ? Math.max(0, Math.min(1, hp / maxHp)) : 0;
+    const width = 0.9;
+    const color = ratio > 0.5 ? 0x7fd1b9 : ratio > 0.25 ? 0xe8c15a : 0xff7a7a;
+    healthBar.roundRect(-width / 2, 0, width, 0.12, 0.06).fill({ color: 0x0b0f14, alpha: 0.72 });
+    healthBar
+      .roundRect(-width / 2 + 0.02, 0.02, (width - 0.04) * ratio, 0.08, 0.04)
+      .fill({ color });
+  };
+
   return {
     container,
     setPosition(x, z) {
@@ -117,6 +146,59 @@ export function createAvatar(name: string, color?: number): Avatar {
     setFacing(yaw) {
       body.rotation = -yaw;
     },
+    setHealth,
+    destroy() {
+      container.destroy({ children: true });
+    },
+  };
+}
+
+export function createShopMarker(name: string): ShopMarker {
+  const container = new Container();
+
+  const shadow = new Graphics();
+  shadow.ellipse(0, 0.5, 1.1, 0.42).fill({ color: 0x06100c, alpha: 0.32 });
+  container.addChild(shadow);
+
+  const base = new Graphics();
+  base
+    .roundRect(-1, -0.1, 2, 1, 0.18)
+    .fill({ color: 0x5b4632 })
+    .stroke({ width: 0.06, color: 0x0b0f14, alpha: 0.6 });
+  base.roundRect(-1, -0.1, 2, 0.28, 0.14).fill({ color: 0x7a5a3c });
+  container.addChild(base);
+
+  const postLeft = new Graphics();
+  postLeft.roundRect(-0.95, -0.75, 0.16, 0.7, 0.06).fill({ color: 0x4a3827 });
+  postLeft.roundRect(0.79, -0.75, 0.16, 0.7, 0.06).fill({ color: 0x4a3827 });
+  container.addChild(postLeft);
+
+  const awning = new Graphics();
+  awning
+    .roundRect(-1.05, -0.85, 2.1, 0.34, 0.1)
+    .fill({ color: 0x7fd1b9 })
+    .stroke({ width: 0.05, color: 0x0b0f14, alpha: 0.5 });
+  awning.roundRect(-1.05, -0.85, 0.5, 0.34, 0.1).fill({ color: 0xe8eef5, alpha: 0.85 });
+  awning.roundRect(0.05, -0.85, 0.5, 0.34, 0.1).fill({ color: 0xe8eef5, alpha: 0.85 });
+  container.addChild(awning);
+
+  const label = new Text({
+    text: name,
+    style: {
+      fontFamily: "Segoe UI, system-ui, sans-serif",
+      fontSize: 11,
+      fontWeight: "700",
+      fill: 0x7fd1b9,
+      stroke: { color: 0x0b0f14, width: 3 },
+    },
+  });
+  label.anchor.set(0.5, 1);
+  label.position.y = -0.95;
+  label.scale.set(1 / PIXELS_PER_UNIT);
+  container.addChild(label);
+
+  return {
+    container,
     destroy() {
       container.destroy({ children: true });
     },
@@ -169,6 +251,61 @@ export function createLootPile(amount: number): LootPile {
   });
   label.anchor.set(0.5, 1);
   label.position.y = -0.7;
+  label.scale.set(1 / PIXELS_PER_UNIT);
+  container.addChild(label);
+
+  return {
+    container,
+    destroy() {
+      container.destroy({ children: true });
+    },
+  };
+}
+
+export function createItemPile(itemId: string, quantity: number): LootPile {
+  const container = new Container();
+  const item = getItem(itemId);
+  const color = item?.color ?? "#cdd3d8";
+  const numeric = Number.parseInt(color.replace("#", ""), 16) || 0xffffff;
+
+  const glow = new Graphics();
+  glow.circle(0, 0, 1.1).fill({ color: numeric, alpha: 0.16 });
+  glow.circle(0, 0, 0.68).fill({ color: numeric, alpha: 0.12 });
+  container.addChild(glow);
+
+  const shadow = new Graphics();
+  shadow.ellipse(0, 0.24, 0.46, 0.24).fill({ color: 0x06100c, alpha: 0.35 });
+  container.addChild(shadow);
+
+  const gem = new Graphics();
+  gem
+    .moveTo(0, -0.42)
+    .lineTo(0.34, -0.05)
+    .lineTo(0, 0.36)
+    .lineTo(-0.34, -0.05)
+    .closePath()
+    .fill({ color: numeric })
+    .stroke({ width: 0.05, color: 0x0b0f14, alpha: 0.55 });
+  gem
+    .moveTo(0, -0.42)
+    .lineTo(0, 0.36)
+    .lineTo(-0.34, -0.05)
+    .closePath()
+    .fill({ color: lighten(numeric, -40), alpha: 0.55 });
+  container.addChild(gem);
+
+  const label = new Text({
+    text: quantity > 1 ? `${item?.name ?? itemId} ×${quantity}` : (item?.name ?? itemId),
+    style: {
+      fontFamily: "Segoe UI, system-ui, sans-serif",
+      fontSize: 10,
+      fontWeight: "700",
+      fill: numeric,
+      stroke: { color: 0x0b0f14, width: 3 },
+    },
+  });
+  label.anchor.set(0.5, 1);
+  label.position.y = -0.6;
   label.scale.set(1 / PIXELS_PER_UNIT);
   container.addChild(label);
 

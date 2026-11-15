@@ -4,6 +4,8 @@ export interface Profile {
   username: string;
   displayName: string;
   coins: number;
+  level: number;
+  isAdmin: boolean;
   saved: boolean;
 }
 
