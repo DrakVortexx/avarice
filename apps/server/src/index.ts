@@ -3,10 +3,12 @@ import { defineRoom, defineServer } from "colyseus";
 import { WORLD_ROOM_NAME } from "@avarice/shared";
 import { WorldRoom } from "./rooms/WorldRoom.js";
 import { config, hasSupabaseConfig } from "./env.js";
-import { initDatabase, isDatabaseReady } from "./db.js";
+import { initDatabase, isDatabaseReady, loadOrCreatePlayer } from "./db.js";
+import { verifyAccessToken } from "./auth.js";
 
 interface HttpRequest {
   method: string;
+  headers: Record<string, string | string[] | undefined>;
 }
 
 interface HttpResponse {
@@ -33,6 +35,33 @@ const server = defineServer({
 
     app.get("/health", (_req: HttpRequest, res: HttpResponse) => {
       res.json({ ok: true, uptime: process.uptime(), db: isDatabaseReady() });
+    });
+
+    app.get("/profile", async (req: HttpRequest, res: HttpResponse) => {
+      const header = req.headers.authorization;
+      const token =
+        typeof header === "string" && header.startsWith("Bearer ") ? header.slice(7) : "";
+      if (!token) {
+        res.sendStatus(401);
+        return;
+      }
+
+      try {
+        const identity = await verifyAccessToken(token);
+        const profile = await loadOrCreatePlayer(
+          identity.authId,
+          identity.username,
+          identity.displayName,
+        );
+        res.json({
+          username: identity.username,
+          displayName: identity.displayName,
+          coins: profile?.coins ?? 0,
+          saved: Boolean(profile),
+        });
+      } catch {
+        res.sendStatus(401);
+      }
     });
   },
 });

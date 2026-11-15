@@ -27,7 +27,7 @@
         <div class="control"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move</div>
         <div class="control"><kbd>Enter</kbd> chat</div>
         <div class="control hint">Walk over coin caches to collect them</div>
-        <button id="logout" class="logout" type="button">Log out</button>
+        <button id="logout" class="logout" type="button">Leave</button>
       </section>
 
       <section id="log" class="panel bottom-left" aria-live="polite"></section>
@@ -70,6 +70,32 @@
           </button>
         </div>
       </form>
+    </div>
+
+    <div id="dashboard" class="auth-overlay hidden">
+      <div class="auth-card dashboard-card">
+        <h1>Avarice</h1>
+        <p class="auth-sub">Welcome back, <strong id="dash-username">wanderer</strong></p>
+        <div class="dash-stats">
+          <div class="dash-stat">
+            <span class="dash-stat-label">Purse</span>
+            <span id="dash-coins" class="dash-stat-value">…</span>
+          </div>
+          <div class="dash-stat">
+            <span class="dash-stat-label">Progress</span>
+            <span id="dash-save" class="dash-stat-value">…</span>
+          </div>
+        </div>
+        <div id="dash-note" class="auth-error hidden"></div>
+        <div class="auth-actions">
+          <button id="dash-play" type="button">Enter the world</button>
+          <button id="dash-logout" type="button" class="ghost">Log out</button>
+        </div>
+        <p class="dash-hint">
+          Move with <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>, chat with <kbd>Enter</kbd>.
+          Walk over coin caches to collect them.
+        </p>
+      </div>
     </div>
 
     <div id="loading">Loading Avarice&hellip;</div>

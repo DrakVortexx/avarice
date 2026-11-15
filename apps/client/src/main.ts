@@ -1,7 +1,9 @@
 import type { Ticker } from "pixi.js";
+import type { Session } from "@supabase/supabase-js";
 import { formatCoins, type ChatEvent, type LootEvent } from "@avarice/shared";
 import { hasSupabaseConfig } from "./config.js";
 import { getCurrentSession, signIn, signOut, signUp, validatePassword, validateUsername } from "./auth.js";
+import { fetchProfile } from "./api.js";
 import { Game } from "./game.js";
 import { createInput } from "./input.js";
 import {
@@ -38,6 +40,14 @@ const authError = must<HTMLDivElement>("#auth-error");
 const authSubmit = must<HTMLButtonElement>("#auth-submit");
 const authToggle = must<HTMLButtonElement>("#auth-toggle");
 
+const dashboardEl = must<HTMLDivElement>("#dashboard");
+const dashUsername = must<HTMLElement>("#dash-username");
+const dashCoins = must<HTMLSpanElement>("#dash-coins");
+const dashSave = must<HTMLSpanElement>("#dash-save");
+const dashNote = must<HTMLDivElement>("#dash-note");
+const dashPlay = must<HTMLButtonElement>("#dash-play");
+const dashLogout = must<HTMLButtonElement>("#dash-logout");
+
 const game = new Game();
 const input = createInput();
 
@@ -45,8 +55,12 @@ let net: Net | null = null;
 let mySessionId = "";
 let authMode: "signin" | "signup" = "signin";
 let sendAccumulator = 0;
+let accessToken = "";
+let currentSession: Session | null = null;
 
 const isAuthVisible = (): boolean => !authEl.classList.contains("hidden");
+const isDashboardVisible = (): boolean => !dashboardEl.classList.contains("hidden");
+const isPlaying = (): boolean => !isAuthVisible() && !isDashboardVisible();
 
 function setStatus(text: string, state: "connecting" | "connected" | "error"): void {
   statusEl.textContent = text;
@@ -125,6 +139,49 @@ function hideAuth(): void {
   clearAuthError();
 }
 
+function hideDashboard(): void {
+  dashboardEl.classList.add("hidden");
+}
+
+function setDashNote(message: string): void {
+  dashNote.textContent = message;
+  dashNote.classList.toggle("hidden", message.length === 0);
+}
+
+async function showDashboard(session: Session): Promise<void> {
+  currentSession = session;
+  accessToken = session.access_token;
+  hideAuth();
+  setDashNote("");
+
+  const meta = session.user.user_metadata as { username?: string } | undefined;
+  dashUsername.textContent = meta?.username ?? session.user.email?.split("@")[0] ?? "wanderer";
+  dashCoins.textContent = "…";
+  dashSave.textContent = "…";
+  dashSave.className = "dash-stat-value";
+  dashboardEl.classList.remove("hidden");
+
+  const profile = await fetchProfile(accessToken);
+  if (!profile) {
+    dashCoins.textContent = "—";
+    dashSave.textContent = "Server unreachable";
+    dashSave.className = "dash-stat-value bad";
+    setDashNote("Could not load your profile. The server may be offline.");
+    return;
+  }
+
+  dashUsername.textContent = profile.displayName;
+  dashCoins.textContent = formatCoins(profile.coins);
+  if (profile.saved) {
+    dashSave.textContent = "Saved";
+    dashSave.className = "dash-stat-value ok";
+  } else {
+    dashSave.textContent = "Not saved";
+    dashSave.className = "dash-stat-value bad";
+    setDashNote("Progress is not being saved. The server database is not connected.");
+  }
+}
+
 function makeHandlers() {
   return {
     onConnected: (sessionId: string): void => {
@@ -138,6 +195,9 @@ function makeHandlers() {
       setStatus("Disconnected", "error");
       addLog("system", "Avarice", `Disconnected (${code}).`);
       updatePlayerCount();
+      if (currentSession) {
+        void showDashboard(currentSession);
+      }
     },
     onError: (message: string): void => {
       setStatus("Connection error", "error");
@@ -192,7 +252,7 @@ async function startGame(accessToken: string): Promise<void> {
 
 function frame(ticker: Ticker): void {
   const dt = Math.min(ticker.deltaMS / 1000, 0.05);
-  const movement = isAuthVisible() ? { x: 0, z: 0 } : input.getMovement();
+  const movement = isPlaying() ? input.getMovement() : { x: 0, z: 0 };
 
   game.updateLocal(dt, movement);
   game.render(dt);
@@ -219,8 +279,7 @@ async function boot(): Promise<void> {
   try {
     const session = await getCurrentSession();
     if (session) {
-      hideAuth();
-      await startGame(session.access_token);
+      await showDashboard(session);
       return;
     }
   } catch {
@@ -256,9 +315,8 @@ authForm.addEventListener("submit", (event) => {
         authMode === "signup"
           ? await signUp({ username, password })
           : await signIn({ username, password });
-      hideAuth();
       authPassword.value = "";
-      await startGame(session.access_token);
+      await showDashboard(session);
     } catch (error) {
       setAuthError(error instanceof Error ? error.message : "Something went wrong.");
     } finally {
@@ -278,6 +336,20 @@ authToggle.addEventListener("click", () => {
 logoutButton.addEventListener("click", () => {
   net?.leave();
   net = null;
+  if (currentSession) {
+    void showDashboard(currentSession);
+  }
+});
+
+dashPlay.addEventListener("click", () => {
+  if (!currentSession) {
+    return;
+  }
+  hideDashboard();
+  void startGame(currentSession.access_token);
+});
+
+dashLogout.addEventListener("click", () => {
   void signOut().finally(() => window.location.reload());
 });
 
@@ -298,7 +370,7 @@ window.addEventListener("keydown", (event) => {
     return;
   }
 
-  if (isAuthVisible()) {
+  if (isAuthVisible() || isDashboardVisible()) {
     return;
   }
 

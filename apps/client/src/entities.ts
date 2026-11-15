@@ -3,7 +3,6 @@ import { PIXELS_PER_UNIT } from "./render.js";
 
 const PALETTE = [0x7fd1b9, 0xb79bff, 0xffc98a, 0x6fb8a8, 0xd98a5f, 0x8fd6e8, 0xe8c15a, 0xff7a5c];
 const SKIN_TONES = [0xf2c9a0, 0xe0ac7e, 0xc98a5b, 0x9c6b43, 0x6f4a2f];
-const HAIR_COLORS = [0x2b2118, 0x4a3524, 0x6b4a2a, 0x1c1c22, 0x8a5a2b, 0x3a3a44];
 
 const LABEL_STYLE = {
   fontFamily: "Segoe UI, system-ui, sans-serif",
@@ -59,7 +58,6 @@ export function createAvatar(name: string, color?: number): Avatar {
   const tint = color ?? colorFromId(name);
   const seed = hashString(name);
   const skin = SKIN_TONES[seed % SKIN_TONES.length] ?? 0xf2c9a0;
-  const hair = HAIR_COLORS[(seed >>> 3) % HAIR_COLORS.length] ?? 0x2b2118;
   const sleeve = lighten(tint, 22);
   const trim = lighten(tint, 54);
 
@@ -94,13 +92,16 @@ export function createAvatar(name: string, color?: number): Avatar {
   body.addChild(arms);
 
   const head = new Graphics();
-  head.circle(0, -0.34, 0.25).fill({ color: skin }).stroke({ width: 0.05, color: 0x0b0f14, alpha: 0.5 });
-  head.circle(0, -0.3, 0.27).fill({ color: hair });
-  head.circle(0, -0.46, 0.16).fill({ color: skin });
   head
-    .moveTo(0, -0.62)
-    .lineTo(0.09, -0.45)
-    .lineTo(-0.09, -0.45)
+    .circle(0, -0.3, 0.29)
+    .fill({ color: tint })
+    .stroke({ width: 0.05, color: 0x0b0f14, alpha: 0.5 });
+  head.circle(0, -0.33, 0.21).fill({ color: lighten(tint, -44) });
+  head.circle(0, -0.42, 0.15).fill({ color: skin });
+  head
+    .moveTo(0, -0.58)
+    .lineTo(0.07, -0.44)
+    .lineTo(-0.07, -0.44)
     .closePath()
     .fill({ color: lighten(skin, -34), alpha: 0.9 });
   body.addChild(head);
