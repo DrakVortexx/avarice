@@ -1,9 +1,9 @@
-import "dotenv/config";
+import "./loadEnv.js";
 import { defineRoom, defineServer } from "colyseus";
 import { WORLD_ROOM_NAME } from "@avarice/shared";
 import { WorldRoom } from "./rooms/WorldRoom.js";
 import { config, hasSupabaseConfig } from "./env.js";
-import { initDatabase } from "./db.js";
+import { initDatabase, isDatabaseReady } from "./db.js";
 
 interface HttpRequest {
   method: string;
@@ -32,7 +32,7 @@ const server = defineServer({
     });
 
     app.get("/health", (_req: HttpRequest, res: HttpResponse) => {
-      res.json({ ok: true, uptime: process.uptime() });
+      res.json({ ok: true, uptime: process.uptime(), db: isDatabaseReady() });
     });
   },
 });
