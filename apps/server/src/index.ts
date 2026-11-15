@@ -23,7 +23,12 @@ const server = defineServer({
   },
   express: (app) => {
     app.use((req: HttpRequest, res: HttpResponse, next: () => void) => {
-      res.setHeader("Access-Control-Allow-Origin", config.clientOrigin);
+      const origin = req.headers.origin;
+      res.setHeader(
+        "Access-Control-Allow-Origin",
+        typeof origin === "string" ? origin : config.clientOrigin,
+      );
+      res.setHeader("Vary", "Origin");
       res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
       res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
       if (req.method === "OPTIONS") {

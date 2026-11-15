@@ -1,7 +1,7 @@
 import type { Ticker } from "pixi.js";
 import type { Session } from "@supabase/supabase-js";
 import { formatCoins, type ChatEvent, type LootEvent } from "@avarice/shared";
-import { hasSupabaseConfig } from "./config.js";
+import { hasSupabaseConfig, SERVER_URL } from "./config.js";
 import { getCurrentSession, signIn, signOut, signUp, validatePassword, validateUsername } from "./auth.js";
 import { fetchProfile } from "./api.js";
 import { Game } from "./game.js";
@@ -148,6 +148,19 @@ function setDashNote(message: string): void {
   dashNote.classList.toggle("hidden", message.length === 0);
 }
 
+function describeProfileFailure(reason: string): string {
+  switch (reason) {
+    case "unreachable":
+      return `Could not reach the server at ${SERVER_URL}. Check VITE_SERVER_URL and that the server allows this origin (CLIENT_ORIGIN).`;
+    case "unauthorized":
+      return "The server rejected your session. Check the server's SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.";
+    case "outdated":
+      return "The server is running an older version without /profile. Redeploy the server.";
+    default:
+      return `The server returned an error (${reason}).`;
+  }
+}
+
 async function showDashboard(session: Session): Promise<void> {
   currentSession = session;
   accessToken = session.access_token;
@@ -161,15 +174,16 @@ async function showDashboard(session: Session): Promise<void> {
   dashSave.className = "dash-stat-value";
   dashboardEl.classList.remove("hidden");
 
-  const profile = await fetchProfile(accessToken);
-  if (!profile) {
+  const result = await fetchProfile(accessToken);
+  if (!result.ok) {
     dashCoins.textContent = "—";
-    dashSave.textContent = "Server unreachable";
+    dashSave.textContent = "Not saved";
     dashSave.className = "dash-stat-value bad";
-    setDashNote("Could not load your profile. The server may be offline.");
+    setDashNote(describeProfileFailure(result.reason));
     return;
   }
 
+  const profile = result.profile;
   dashUsername.textContent = profile.displayName;
   dashCoins.textContent = formatCoins(profile.coins);
   if (profile.saved) {
