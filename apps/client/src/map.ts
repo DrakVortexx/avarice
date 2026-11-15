@@ -1,12 +1,14 @@
-import { Container, Graphics } from "pixi.js";
+import { Container, Graphics, Text } from "pixi.js";
 import {
   BUILDINGS,
-  LAKE,
+  DISTRICTS,
+  LAKES,
   PATHS,
   PLAZA_RADIUS,
   TREES,
   WORLD_RADIUS,
 } from "@avarice/shared";
+import { PIXELS_PER_UNIT } from "./render.js";
 
 const GRASS_PALETTE = [0x22352a, 0x283d2f, 0x1e3026, 0x2d4433, 0x24392b];
 const TREE_PALETTE = [
@@ -39,13 +41,19 @@ function insideBuilding(x: number, z: number, padding: number): boolean {
 }
 
 function insideLake(x: number, z: number, padding: number): boolean {
-  const nx = (x - LAKE.x) / (LAKE.rx + padding);
-  const nz = (z - LAKE.z) / (LAKE.rz + padding);
-  return nx * nx + nz * nz < 1;
+  return LAKES.some((lake) => {
+    const nx = (x - lake.x) / (lake.rx + padding);
+    const nz = (z - lake.z) / (lake.rz + padding);
+    return nx * nx + nz * nz < 1;
+  });
+}
+
+function insideDistrict(x: number, z: number, padding: number): boolean {
+  return DISTRICTS.some((district) => Math.hypot(district.x - x, district.z - z) < district.radius + padding);
 }
 
 function drawGround(map: Container): void {
-  const extent = WORLD_RADIUS + 24;
+  const extent = WORLD_RADIUS + 40;
 
   const ground = new Graphics();
   ground.rect(-extent, -extent, extent * 2, extent * 2).fill(0x141f19);
@@ -53,13 +61,13 @@ function drawGround(map: Container): void {
 
   const random = mulberry32(0xa17e5);
   const patches = new Graphics();
-  for (let i = 0; i < 350; i += 1) {
+  for (let i = 0; i < 1400; i += 1) {
     const angle = random() * Math.PI * 2;
     const radius = Math.sqrt(random()) * WORLD_RADIUS;
     const x = Math.cos(angle) * radius;
     const z = Math.sin(angle) * radius;
-    const rx = 4 + random() * 15;
-    const rz = 3 + random() * 11;
+    const rx = 5 + random() * 20;
+    const rz = 4 + random() * 15;
     const color = GRASS_PALETTE[Math.floor(random() * GRASS_PALETTE.length)] ?? 0x22352a;
     patches.ellipse(x, z, rx, rz).fill({ color, alpha: 0.5 + random() * 0.35 });
   }
@@ -84,57 +92,72 @@ function drawPaths(map: Container): void {
     }
   }
 
-  outer.stroke({ width: 4.6, color: 0x3a3223, alpha: 0.85, cap: "round", join: "round" });
-  inner.stroke({ width: 3.4, color: 0x584a33, alpha: 0.9, cap: "round", join: "round" });
+  outer.stroke({ width: 5.4, color: 0x3a3223, alpha: 0.85, cap: "round", join: "round" });
+  inner.stroke({ width: 4, color: 0x584a33, alpha: 0.9, cap: "round", join: "round" });
   map.addChild(outer, inner);
 }
 
-function drawLake(map: Container): void {
+function drawLakes(map: Container): void {
   const shore = new Graphics();
-  shore.ellipse(LAKE.x, LAKE.z, LAKE.rx + 4, LAKE.rz + 4).fill({ color: 0x6c6247, alpha: 0.55 });
-  shore.ellipse(LAKE.x, LAKE.z, LAKE.rx + 1.5, LAKE.rz + 1.5).fill({ color: 0x8a7d5a, alpha: 0.5 });
-  map.addChild(shore);
-
   const water = new Graphics();
-  water.ellipse(LAKE.x, LAKE.z, LAKE.rx, LAKE.rz).fill({ color: 0x1d3f55, alpha: 1 });
-  water.ellipse(LAKE.x - 6, LAKE.z - 4, LAKE.rx * 0.78, LAKE.rz * 0.74).fill({ color: 0x27536d, alpha: 0.8 });
-  water
-    .ellipse(LAKE.x - 10, LAKE.z - 7, LAKE.rx * 0.5, LAKE.rz * 0.46)
-    .fill({ color: 0x336a86, alpha: 0.5 });
-  map.addChild(water);
-
   const ripples = new Graphics();
   const random = mulberry32(0x1a4e);
-  for (let i = 0; i < 14; i += 1) {
-    const angle = random() * Math.PI * 2;
-    const radius = Math.sqrt(random());
-    const x = LAKE.x + Math.cos(angle) * radius * LAKE.rx * 0.8;
-    const z = LAKE.z + Math.sin(angle) * radius * LAKE.rz * 0.8;
-    ripples.ellipse(x, z, 1.2 + random() * 2.4, 0.25 + random() * 0.35).stroke({
-      width: 0.16,
-      color: 0xb6e3f5,
-      alpha: 0.35,
-    });
+
+  for (const lake of LAKES) {
+    shore.ellipse(lake.x, lake.z, lake.rx + 5, lake.rz + 5).fill({ color: 0x6c6247, alpha: 0.55 });
+    shore.ellipse(lake.x, lake.z, lake.rx + 2, lake.rz + 2).fill({ color: 0x8a7d5a, alpha: 0.5 });
+
+    water.ellipse(lake.x, lake.z, lake.rx, lake.rz).fill({ color: 0x1d3f55, alpha: 1 });
+    water
+      .ellipse(lake.x - 6, lake.z - 4, lake.rx * 0.78, lake.rz * 0.74)
+      .fill({ color: 0x27536d, alpha: 0.8 });
+    water
+      .ellipse(lake.x - 10, lake.z - 7, lake.rx * 0.5, lake.rz * 0.46)
+      .fill({ color: 0x336a86, alpha: 0.5 });
+
+    for (let i = 0; i < 12; i += 1) {
+      const angle = random() * Math.PI * 2;
+      const radius = Math.sqrt(random());
+      const x = lake.x + Math.cos(angle) * radius * lake.rx * 0.8;
+      const z = lake.z + Math.sin(angle) * radius * lake.rz * 0.8;
+      ripples.ellipse(x, z, 1.2 + random() * 2.4, 0.25 + random() * 0.35).stroke({
+        width: 0.16,
+        color: 0xb6e3f5,
+        alpha: 0.35,
+      });
+    }
   }
-  map.addChild(ripples);
+
+  map.addChild(shore, water, ripples);
 }
 
-function drawPlaza(map: Container): void {
+function drawPlazas(map: Container): void {
   const plaza = new Graphics();
-  plaza.circle(0, 0, PLAZA_RADIUS + 1.5).fill({ color: 0x26302a, alpha: 0.9 });
-  plaza.circle(0, 0, PLAZA_RADIUS).fill({ color: 0x39423b, alpha: 0.98 });
-  plaza.circle(0, 0, PLAZA_RADIUS - 1.6).fill({ color: 0x424c44, alpha: 0.9 });
-  plaza.circle(0, 0, PLAZA_RADIUS).stroke({ width: 0.28, color: 0x6b7d6e, alpha: 0.8 });
-  plaza.circle(0, 0, 4.4).stroke({ width: 0.18, color: 0x5d6d60, alpha: 0.7 });
-  plaza.circle(0, 0, 7.4).stroke({ width: 0.15, color: 0x5d6d60, alpha: 0.5 });
 
-  for (let i = 0; i < 16; i += 1) {
-    const angle = (i / 16) * Math.PI * 2;
-    plaza
-      .moveTo(Math.cos(angle) * 4.4, Math.sin(angle) * 4.4)
-      .lineTo(Math.cos(angle) * (PLAZA_RADIUS - 1.6), Math.sin(angle) * (PLAZA_RADIUS - 1.6));
+  for (const district of DISTRICTS) {
+    const radius = district.radius;
+    plaza.circle(district.x, district.z, radius + 1.5).fill({ color: 0x26302a, alpha: 0.9 });
+    plaza.circle(district.x, district.z, radius).fill({ color: 0x39423b, alpha: 0.98 });
+    plaza.circle(district.x, district.z, radius - 1.6).fill({ color: 0x424c44, alpha: 0.9 });
+    plaza.circle(district.x, district.z, radius).stroke({ width: 0.28, color: 0x6b7d6e, alpha: 0.8 });
   }
-  plaza.stroke({ width: 0.12, color: 0x5d6d60, alpha: 0.4 });
+
+  const hub = DISTRICTS[0];
+  if (hub) {
+    plaza.circle(hub.x, hub.z, 4.4).stroke({ width: 0.18, color: 0x5d6d60, alpha: 0.7 });
+    plaza.circle(hub.x, hub.z, 7.4).stroke({ width: 0.15, color: 0x5d6d60, alpha: 0.5 });
+    for (let i = 0; i < 16; i += 1) {
+      const angle = (i / 16) * Math.PI * 2;
+      plaza
+        .moveTo(hub.x + Math.cos(angle) * 4.4, hub.z + Math.sin(angle) * 4.4)
+        .lineTo(
+          hub.x + Math.cos(angle) * (PLAZA_RADIUS - 1.6),
+          hub.z + Math.sin(angle) * (PLAZA_RADIUS - 1.6),
+        );
+    }
+    plaza.stroke({ width: 0.12, color: 0x5d6d60, alpha: 0.4 });
+  }
+
   map.addChild(plaza);
 
   const fountain = new Graphics();
@@ -219,12 +242,12 @@ function drawScatter(map: Container): void {
   const rocks = new Graphics();
   const bushes = new Graphics();
 
-  for (let i = 0; i < 700; i += 1) {
+  for (let i = 0; i < 1500; i += 1) {
     const angle = random() * Math.PI * 2;
     const radius = Math.sqrt(random()) * (WORLD_RADIUS - 4);
     const x = Math.cos(angle) * radius;
     const z = Math.sin(angle) * radius;
-    if (Math.hypot(x, z) < PLAZA_RADIUS + 3 || insideBuilding(x, z, 2) || insideLake(x, z, 2)) {
+    if (insideDistrict(x, z, 3) || insideBuilding(x, z, 2) || insideLake(x, z, 2)) {
       continue;
     }
     const size = 0.5 + random() * 0.9;
@@ -236,12 +259,12 @@ function drawScatter(map: Container): void {
     });
   }
 
-  for (let i = 0; i < 700; i += 1) {
+  for (let i = 0; i < 1500; i += 1) {
     const angle = random() * Math.PI * 2;
     const radius = Math.sqrt(random()) * (WORLD_RADIUS - 4);
     const x = Math.cos(angle) * radius;
     const z = Math.sin(angle) * radius;
-    if (Math.hypot(x, z) < PLAZA_RADIUS + 2 || insideBuilding(x, z, 1.5) || insideLake(x, z, 1.5)) {
+    if (insideDistrict(x, z, 2) || insideBuilding(x, z, 1.5) || insideLake(x, z, 1.5)) {
       continue;
     }
     const size = 0.4 + random() * 0.6;
@@ -258,23 +281,45 @@ function drawScatter(map: Container): void {
 function drawLanterns(map: Container): void {
   const lanterns = new Graphics();
 
-  for (let i = 0; i < 12; i += 1) {
-    const angle = (i / 12) * Math.PI * 2;
-    const x = Math.cos(angle) * (PLAZA_RADIUS + 2.5);
-    const z = Math.sin(angle) * (PLAZA_RADIUS + 2.5);
-    lanterns.circle(x, z, 2).fill({ color: 0xf3c46a, alpha: 0.08 });
-    lanterns.circle(x, z, 0.42).fill({ color: 0x2a2118, alpha: 1 });
-    lanterns.circle(x, z, 0.24).fill({ color: 0xf3d27a, alpha: 0.95 });
+  for (const district of DISTRICTS) {
+    const count = district.radius <= PLAZA_RADIUS + 0.5 ? 12 : 8;
+    for (let i = 0; i < count; i += 1) {
+      const angle = (i / count) * Math.PI * 2;
+      const x = district.x + Math.cos(angle) * (district.radius + 2.5);
+      const z = district.z + Math.sin(angle) * (district.radius + 2.5);
+      lanterns.circle(x, z, 2).fill({ color: 0xf3c46a, alpha: 0.08 });
+      lanterns.circle(x, z, 0.42).fill({ color: 0x2a2118, alpha: 1 });
+      lanterns.circle(x, z, 0.24).fill({ color: 0xf3d27a, alpha: 0.95 });
+    }
   }
 
   map.addChild(lanterns);
 }
 
+function drawLabels(map: Container): void {
+  for (const district of DISTRICTS) {
+    const label = new Text({
+      text: district.name,
+      style: {
+        fontFamily: "Segoe UI, system-ui, sans-serif",
+        fontSize: 26,
+        fontWeight: "700",
+        fill: 0xcdd9c8,
+        stroke: { color: 0x0b0f14, width: 5 },
+      },
+    });
+    label.anchor.set(0.5, 0.5);
+    label.position.set(district.x, district.z);
+    label.scale.set(1 / PIXELS_PER_UNIT);
+    map.addChild(label);
+  }
+}
+
 function drawBoundary(map: Container): void {
   const boundary = new Graphics();
-  boundary.circle(0, 0, WORLD_RADIUS).stroke({ width: 1.6, color: 0x4f8f83, alpha: 0.7 });
-  boundary.circle(0, 0, WORLD_RADIUS - 1.2).stroke({ width: 0.6, color: 0x9adfd0, alpha: 0.22 });
-  boundary.circle(0, 0, WORLD_RADIUS + 1.4).stroke({ width: 0.5, color: 0x0a1410, alpha: 0.5 });
+  boundary.circle(0, 0, WORLD_RADIUS).stroke({ width: 2.4, color: 0x4f8f83, alpha: 0.7 });
+  boundary.circle(0, 0, WORLD_RADIUS - 2).stroke({ width: 0.9, color: 0x9adfd0, alpha: 0.22 });
+  boundary.circle(0, 0, WORLD_RADIUS + 2).stroke({ width: 0.8, color: 0x0a1410, alpha: 0.5 });
   map.addChild(boundary);
 }
 
@@ -282,12 +327,13 @@ export function buildMap(): Container {
   const map = new Container();
   drawGround(map);
   drawPaths(map);
-  drawLake(map);
-  drawPlaza(map);
+  drawLakes(map);
+  drawPlazas(map);
   drawBuildings(map);
   drawTrees(map);
   drawScatter(map);
   drawLanterns(map);
+  drawLabels(map);
   drawBoundary(map);
   return map;
 }

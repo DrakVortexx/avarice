@@ -23,65 +23,53 @@ export interface Lake {
   rz: number;
 }
 
-export const PLAZA_RADIUS = 10;
+export interface District {
+  name: string;
+  x: number;
+  z: number;
+  radius: number;
+}
 
-export const LAKE: Lake = { x: 118, z: -72, rx: 46, rz: 31 };
+export const PLAZA_RADIUS = 12;
 
-export const BUILDINGS: Building[] = [
-  { x: 24, z: -40, w: 9, h: 6 },
-  { x: 50, z: -34, w: 6, h: 9 },
-  { x: 30, z: -64, w: 8, h: 5.5 },
-  { x: -34, z: -34, w: 10, h: 6.5 },
-  { x: -64, z: -40, w: 6.5, h: 9.5 },
-  { x: -32, z: 30, w: 9, h: 7.5 },
-  { x: -62, z: 44, w: 7.5, h: 6 },
-  { x: 32, z: 38, w: 10, h: 6.5 },
-  { x: 62, z: 30, w: 6.5, h: 9 },
-  { x: 82, z: -10, w: 7.5, h: 7.5 },
-  { x: -84, z: 6, w: 8.5, h: 6.5 },
-  { x: -4, z: -84, w: 11, h: 6.5 },
-  { x: -2, z: 88, w: 10, h: 6.5 },
-  { x: 110, z: 70, w: 8.5, h: 7.5 },
-  { x: -118, z: -96, w: 10, h: 7.5 },
-  { x: 136, z: -134, w: 11, h: 8.5 },
-  { x: -150, z: 126, w: 12, h: 8.5 },
-  { x: 148, z: 150, w: 10, h: 8 },
-  { x: -160, z: -30, w: 8, h: 10 },
-  { x: 40, z: -150, w: 9, h: 8 },
+export const LAKES: Lake[] = [
+  { x: 150, z: -95, rx: 62, rz: 42 },
+  { x: -250, z: 195, rx: 58, rz: 40 },
+  { x: 255, z: 255, rx: 50, rz: 36 },
+  { x: -170, z: -300, rx: 44, rz: 32 },
 ];
 
-export const PATHS: Vec2[][] = [
-  [
-    { x: 0, z: 0 },
-    { x: 0, z: -90 },
-    { x: 20, z: -150 },
-  ],
-  [
-    { x: 0, z: 0 },
-    { x: 80, z: -20 },
-    { x: 140, z: -44 },
-  ],
-  [
-    { x: 0, z: 0 },
-    { x: -85, z: 10 },
-    { x: -160, z: -30 },
-  ],
-  [
-    { x: 0, z: 0 },
-    { x: 30, z: 80 },
-    { x: 110, z: 70 },
-  ],
-  [
-    { x: 0, z: 0 },
-    { x: -70, z: 60 },
-    { x: -150, z: 126 },
-  ],
-  [
-    { x: 0, z: 0 },
-    { x: 0, z: 90 },
-    { x: 0, z: 170 },
-  ],
+const OUTPOSTS: District[] = [
+  { name: "Frostgate", x: 0, z: -400, radius: 15 },
+  { name: "Highfell", x: 340, z: -340, radius: 14 },
+  { name: "Emberhold", x: 430, z: 40, radius: 15 },
+  { name: "Sunmere", x: 40, z: 430, radius: 15 },
+  { name: "Duskport", x: -340, z: 340, radius: 14 },
+  { name: "Mistwood", x: -430, z: -40, radius: 15 },
 ];
+
+export const DISTRICTS: District[] = [
+  { name: "Market Plaza", x: 0, z: 0, radius: PLAZA_RADIUS },
+  ...OUTPOSTS,
+];
+
+function buildPaths(): Vec2[][] {
+  const spokes: Vec2[][] = OUTPOSTS.map((district) => [
+    { x: 0, z: 0 },
+    { x: district.x * 0.5, z: district.z * 0.5 },
+    { x: district.x, z: district.z },
+  ]);
+
+  const ring: Vec2[] = OUTPOSTS.map((district) => ({ x: district.x, z: district.z }));
+  const first = OUTPOSTS[0];
+  if (first) {
+    ring.push({ x: first.x, z: first.z });
+  }
+
+  return [...spokes, ring];
+}
+
+export const PATHS: Vec2[][] = buildPaths();
 
 function mulberry32(seed: number): () => number {
   let a = seed >>> 0;
@@ -132,49 +120,145 @@ function insideBuilding(x: number, z: number, padding: number): boolean {
 }
 
 function insideLake(x: number, z: number, padding: number): boolean {
-  const nx = (x - LAKE.x) / (LAKE.rx + padding);
-  const nz = (z - LAKE.z) / (LAKE.rz + padding);
-  return nx * nx + nz * nz < 1;
+  for (const lake of LAKES) {
+    const nx = (x - lake.x) / (lake.rx + padding);
+    const nz = (z - lake.z) / (lake.rz + padding);
+    if (nx * nx + nz * nz < 1) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function insideDistrictPlaza(x: number, z: number, padding: number): boolean {
+  for (const district of DISTRICTS) {
+    if (Math.hypot(district.x - x, district.z - z) < district.radius + padding) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function rectsOverlap(a: Building, b: Building, padding: number): boolean {
+  return (
+    a.x - padding < b.x + b.w &&
+    a.x + a.w + padding > b.x &&
+    a.z - padding < b.z + b.h &&
+    a.z + a.h + padding > b.z
+  );
+}
+
+function buildBuildings(): Building[] {
+  const random = mulberry32(0xb01d1e5);
+  const buildings: Building[] = [];
+
+  for (const district of DISTRICTS) {
+    const isHub = district.radius <= PLAZA_RADIUS + 0.5;
+    const count = isHub ? 18 : 10;
+    const minRing = district.radius + 5;
+    const maxRing = isHub ? 72 : 36;
+    let placed = 0;
+    let attempts = 0;
+
+    while (placed < count && attempts < 600) {
+      attempts += 1;
+      const angle = random() * Math.PI * 2;
+      const ring = minRing + random() * (maxRing - minRing);
+      const w = 6 + random() * 7;
+      const h = 6 + random() * 7;
+      const cx = district.x + Math.cos(angle) * ring;
+      const cz = district.z + Math.sin(angle) * ring;
+      const candidate: Building = { x: cx - w / 2, z: cz - h / 2, w, h };
+
+      if (Math.hypot(cx, cz) > WORLD_RADIUS - 24) {
+        continue;
+      }
+      if (insideLake(cx, cz, 3) || distanceToPath(cx, cz) < 5) {
+        continue;
+      }
+      if (buildings.some((building) => rectsOverlap(candidate, building, 4))) {
+        continue;
+      }
+
+      buildings.push(candidate);
+      placed += 1;
+    }
+  }
+
+  return buildings;
+}
+
+export const BUILDINGS: Building[] = buildBuildings();
+
+const TREE_CELL = 8;
+
+function treeCellKey(cx: number, cz: number): string {
+  return `${cx}:${cz}`;
 }
 
 function buildTrees(): Tree[] {
   const random = mulberry32(0x5eed1234);
   const trees: Tree[] = [];
+  const cells = new Map<string, Tree[]>();
+  const target = 2200;
   let attempts = 0;
 
-  while (trees.length < 700 && attempts < 30_000) {
+  const addTree = (tree: Tree): void => {
+    const key = treeCellKey(Math.floor(tree.x / TREE_CELL), Math.floor(tree.z / TREE_CELL));
+    const bucket = cells.get(key);
+    if (bucket) {
+      bucket.push(tree);
+    } else {
+      cells.set(key, [tree]);
+    }
+  };
+
+  const tooCrowded = (x: number, z: number, minDistance: number): boolean => {
+    const cx = Math.floor(x / TREE_CELL);
+    const cz = Math.floor(z / TREE_CELL);
+    for (let ox = -1; ox <= 1; ox += 1) {
+      for (let oz = -1; oz <= 1; oz += 1) {
+        const bucket = cells.get(treeCellKey(cx + ox, cz + oz));
+        if (!bucket) {
+          continue;
+        }
+        for (const tree of bucket) {
+          if (Math.hypot(tree.x - x, tree.z - z) < minDistance) {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
+  };
+
+  while (trees.length < target && attempts < 90_000) {
     attempts += 1;
     const angle = random() * Math.PI * 2;
-    const radius = Math.sqrt(random()) * (WORLD_RADIUS - 6);
+    const radius = Math.sqrt(random()) * (WORLD_RADIUS - 8);
     const x = Math.cos(angle) * radius;
     const z = Math.sin(angle) * radius;
     const size = 0.75 + random() * 0.75;
 
-    if (Math.hypot(x, z) < PLAZA_RADIUS + 7) {
+    if (insideDistrictPlaza(x, z, 5)) {
       continue;
     }
     if (insideBuilding(x, z, 3) || insideLake(x, z, 4) || distanceToPath(x, z) < 4.5) {
       continue;
     }
-
-    let crowded = false;
-    for (const tree of trees) {
-      if (Math.hypot(tree.x - x, tree.z - z) < 2.8) {
-        crowded = true;
-        break;
-      }
-    }
-    if (crowded) {
+    if (tooCrowded(x, z, 2.8)) {
       continue;
     }
 
-    trees.push({
+    const tree: Tree = {
       x,
       z,
       r: 0.55 + size * 0.35,
       size,
       variant: Math.floor(random() * 3),
-    });
+    };
+    trees.push(tree);
+    addTree(tree);
   }
 
   return trees;
@@ -182,17 +266,46 @@ function buildTrees(): Tree[] {
 
 export const TREES: Tree[] = buildTrees();
 
+const collisionGrid = new Map<string, Tree[]>();
+
+for (const tree of TREES) {
+  const key = treeCellKey(Math.floor(tree.x / TREE_CELL), Math.floor(tree.z / TREE_CELL));
+  const bucket = collisionGrid.get(key);
+  if (bucket) {
+    bucket.push(tree);
+  } else {
+    collisionGrid.set(key, [tree]);
+  }
+}
+
+function nearbyTrees(x: number, z: number): Tree[] {
+  const cx = Math.floor(x / TREE_CELL);
+  const cz = Math.floor(z / TREE_CELL);
+  const result: Tree[] = [];
+  for (let ox = -1; ox <= 1; ox += 1) {
+    for (let oz = -1; oz <= 1; oz += 1) {
+      const bucket = collisionGrid.get(treeCellKey(cx + ox, cz + oz));
+      if (bucket) {
+        for (const tree of bucket) {
+          result.push(tree);
+        }
+      }
+    }
+  }
+  return result;
+}
+
 export function isPositionFree(x: number, z: number, padding = 0): boolean {
   if (Math.hypot(x, z) > WORLD_RADIUS - padding - 3) {
     return false;
   }
-  if (Math.hypot(x, z) < PLAZA_RADIUS + 2) {
+  if (insideDistrictPlaza(x, z, 2)) {
     return false;
   }
   if (insideBuilding(x, z, padding + 1.5) || insideLake(x, z, padding + 1.5)) {
     return false;
   }
-  for (const tree of TREES) {
+  for (const tree of nearbyTrees(x, z)) {
     if (Math.hypot(tree.x - x, tree.z - z) < tree.r + padding + 0.8) {
       return false;
     }
@@ -228,22 +341,24 @@ export function resolveWorldCollision(position: Vec2, radius: number): Vec2 {
       }
     }
 
-    const lakeRx = LAKE.rx + radius;
-    const lakeRz = LAKE.rz + radius;
-    const nx = (x - LAKE.x) / lakeRx;
-    const nz = (z - LAKE.z) / lakeRz;
-    const lakeDistance = Math.hypot(nx, nz);
-    if (lakeDistance < 1) {
-      if (lakeDistance < 1e-4) {
-        x = LAKE.x + lakeRx;
-        z = LAKE.z;
-      } else {
-        x = LAKE.x + (nx / lakeDistance) * lakeRx;
-        z = LAKE.z + (nz / lakeDistance) * lakeRz;
+    for (const lake of LAKES) {
+      const lakeRx = lake.rx + radius;
+      const lakeRz = lake.rz + radius;
+      const nx = (x - lake.x) / lakeRx;
+      const nz = (z - lake.z) / lakeRz;
+      const lakeDistance = Math.hypot(nx, nz);
+      if (lakeDistance < 1) {
+        if (lakeDistance < 1e-4) {
+          x = lake.x + lakeRx;
+          z = lake.z;
+        } else {
+          x = lake.x + (nx / lakeDistance) * lakeRx;
+          z = lake.z + (nz / lakeDistance) * lakeRz;
+        }
       }
     }
 
-    for (const tree of TREES) {
+    for (const tree of nearbyTrees(x, z)) {
       const dx = x - tree.x;
       const dz = z - tree.z;
       const minDistance = tree.r + radius;

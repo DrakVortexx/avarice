@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { BUILDINGS, WORLD_RADIUS, isPositionFree, resolveWorldCollision } from "./index.js";
+import {
+  BUILDINGS,
+  PLAZA_RADIUS,
+  WORLD_RADIUS,
+  isPositionFree,
+  resolveWorldCollision,
+} from "./index.js";
 
 describe("resolveWorldCollision", () => {
   it("keeps players inside the world boundary", () => {
@@ -31,6 +37,13 @@ describe("isPositionFree", () => {
   });
 
   it("accepts open ground away from the plaza", () => {
-    expect(isPositionFree(0, 40)).toBe(true);
+    let found = false;
+    for (let radius = PLAZA_RADIUS + 4; radius < WORLD_RADIUS - 10; radius += 1) {
+      if (isPositionFree(0, radius)) {
+        found = true;
+        break;
+      }
+    }
+    expect(found).toBe(true);
   });
 });

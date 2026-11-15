@@ -1,7 +1,8 @@
 import { Application, Container, Graphics, Text } from "pixi.js";
 import {
   BUILDINGS,
-  LAKE,
+  DISTRICTS,
+  LAKES,
   PLAYER_RADIUS,
   PLAYER_SPEED,
   PLAZA_RADIUS,
@@ -87,9 +88,18 @@ export class Game {
     base.circle(0, 0, MINIMAP_RADIUS).stroke({ width: 1.5, color: 0x6fb8a8, alpha: 0.6 });
 
     base.circle(0, 0, PLAZA_RADIUS * MINIMAP_SCALE).fill({ color: 0x39423b, alpha: 0.9 });
-    base
-      .ellipse(LAKE.x * MINIMAP_SCALE, LAKE.z * MINIMAP_SCALE, LAKE.rx * MINIMAP_SCALE, LAKE.rz * MINIMAP_SCALE)
-      .fill({ color: 0x2a5a70, alpha: 0.85 });
+
+    for (const district of DISTRICTS) {
+      base
+        .circle(district.x * MINIMAP_SCALE, district.z * MINIMAP_SCALE, district.radius * MINIMAP_SCALE)
+        .fill({ color: 0x424c44, alpha: 0.9 });
+    }
+
+    for (const lake of LAKES) {
+      base
+        .ellipse(lake.x * MINIMAP_SCALE, lake.z * MINIMAP_SCALE, lake.rx * MINIMAP_SCALE, lake.rz * MINIMAP_SCALE)
+        .fill({ color: 0x2a5a70, alpha: 0.85 });
+    }
 
     for (const building of BUILDINGS) {
       base
