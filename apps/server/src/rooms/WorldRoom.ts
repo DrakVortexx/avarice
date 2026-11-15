@@ -44,7 +44,7 @@ interface PersistRecord {
   coins: number;
 }
 
-const PERSIST_INTERVAL_MS = 15_000;
+const PERSIST_INTERVAL_MS = 10_000;
 
 function randomSpawn(): Vec2 {
   const angle = Math.random() * Math.PI * 2;
@@ -177,7 +177,8 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     }
   }
 
-  onDispose() {
+  async onDispose() {
+    await this.persistAll();
     this.playerInputs.clear();
     this.identities.clear();
     this.lootExpiry.clear();
@@ -256,6 +257,11 @@ export class WorldRoom extends Room<{ state: WorldState }> {
 
       picker.coins += loot.amount;
       collected.push(lootId);
+
+      const pickerIdentity = this.identities.get(pickerId);
+      if (pickerIdentity) {
+        void persistPlayer(pickerIdentity.authId, picker.name, picker.x, picker.z, picker.coins);
+      }
 
       this.broadcast("loot", {
         sessionId: pickerId,

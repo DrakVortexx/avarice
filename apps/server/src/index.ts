@@ -3,6 +3,7 @@ import { defineRoom, defineServer } from "colyseus";
 import { WORLD_ROOM_NAME } from "@avarice/shared";
 import { WorldRoom } from "./rooms/WorldRoom.js";
 import { config, hasSupabaseConfig } from "./env.js";
+import { initDatabase } from "./db.js";
 
 interface HttpRequest {
   method: string;
@@ -36,6 +37,8 @@ const server = defineServer({
   },
 });
 
+await initDatabase();
+
 server.listen(config.port);
 console.log(`[server] Avarice listening on http://localhost:${config.port}`);
 
@@ -44,3 +47,10 @@ if (!hasSupabaseConfig()) {
     "[server] SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY are missing. Player joins will be rejected until they are set.",
   );
 }
+
+const shutdown = () => {
+  void server.gracefullyShutdown();
+};
+
+process.on("SIGINT", shutdown);
+process.on("SIGTERM", shutdown);

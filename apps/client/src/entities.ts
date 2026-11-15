@@ -2,6 +2,8 @@ import { Container, Graphics, Text } from "pixi.js";
 import { PIXELS_PER_UNIT } from "./render.js";
 
 const PALETTE = [0x7fd1b9, 0xb79bff, 0xffc98a, 0x6fb8a8, 0xd98a5f, 0x8fd6e8, 0xe8c15a, 0xff7a5c];
+const SKIN_TONES = [0xf2c9a0, 0xe0ac7e, 0xc98a5b, 0x9c6b43, 0x6f4a2f];
+const HAIR_COLORS = [0x2b2118, 0x4a3524, 0x6b4a2a, 0x1c1c22, 0x8a5a2b, 0x3a3a44];
 
 const LABEL_STYLE = {
   fontFamily: "Segoe UI, system-ui, sans-serif",
@@ -45,9 +47,9 @@ function makeLabel(text: string): Text {
 }
 
 function lighten(color: number, amount: number): number {
-  const r = Math.min(255, ((color >> 16) & 0xff) + amount);
-  const g = Math.min(255, ((color >> 8) & 0xff) + amount);
-  const b = Math.min(255, (color & 0xff) + amount);
+  const r = Math.max(0, Math.min(255, ((color >> 16) & 0xff) + amount));
+  const g = Math.max(0, Math.min(255, ((color >> 8) & 0xff) + amount));
+  const b = Math.max(0, Math.min(255, (color & 0xff) + amount));
   return (r << 16) | (g << 8) | b;
 }
 
@@ -55,29 +57,53 @@ export function createAvatar(name: string, color?: number): Avatar {
   const container = new Container();
   const body = new Container();
   const tint = color ?? colorFromId(name);
+  const seed = hashString(name);
+  const skin = SKIN_TONES[seed % SKIN_TONES.length] ?? 0xf2c9a0;
+  const hair = HAIR_COLORS[(seed >>> 3) % HAIR_COLORS.length] ?? 0x2b2118;
+  const sleeve = lighten(tint, 22);
+  const trim = lighten(tint, 54);
 
   const shadow = new Graphics();
-  shadow.ellipse(0, 0.16, 0.62, 0.36).fill({ color: 0x06100c, alpha: 0.32 });
+  shadow.ellipse(0, 0.2, 0.62, 0.34).fill({ color: 0x06100c, alpha: 0.32 });
   container.addChild(shadow);
 
-  const cloak = new Graphics();
-  cloak.circle(0, 0, 0.52).fill({ color: 0x0b0f14, alpha: 0.5 });
-  body.addChild(cloak);
+  const legs = new Graphics();
+  legs.ellipse(-0.17, 0.22, 0.13, 0.2).fill({ color: 0x1b232b });
+  legs.ellipse(0.17, 0.22, 0.13, 0.2).fill({ color: 0x1b232b });
+  body.addChild(legs);
 
-  const disc = new Graphics();
-  disc.circle(0, 0, 0.46).fill({ color: tint, alpha: 0.96 });
-  disc.circle(0, 0, 0.46).stroke({ width: 0.07, color: 0xffffff, alpha: 0.28 });
-  disc.circle(-0.13, -0.14, 0.17).fill({ color: lighten(tint, 34), alpha: 0.55 });
-  body.addChild(disc);
+  const torso = new Graphics();
+  torso
+    .roundRect(-0.34, -0.32, 0.68, 0.7, 0.28)
+    .fill({ color: tint })
+    .stroke({ width: 0.05, color: 0x0b0f14, alpha: 0.55 });
+  torso.roundRect(-0.2, -0.22, 0.4, 0.42, 0.18).fill({ color: trim, alpha: 0.35 });
+  body.addChild(torso);
 
-  const facing = new Graphics();
-  facing
-    .moveTo(0, -0.78)
-    .lineTo(0.3, -0.3)
-    .lineTo(-0.3, -0.3)
+  const arms = new Graphics();
+  arms
+    .roundRect(-0.53, -0.26, 0.17, 0.52, 0.08)
+    .fill({ color: sleeve })
+    .stroke({ width: 0.04, color: 0x0b0f14, alpha: 0.4 });
+  arms
+    .roundRect(0.36, -0.26, 0.17, 0.52, 0.08)
+    .fill({ color: sleeve })
+    .stroke({ width: 0.04, color: 0x0b0f14, alpha: 0.4 });
+  arms.circle(-0.445, 0.3, 0.11).fill({ color: skin });
+  arms.circle(0.445, 0.3, 0.11).fill({ color: skin });
+  body.addChild(arms);
+
+  const head = new Graphics();
+  head.circle(0, -0.34, 0.25).fill({ color: skin }).stroke({ width: 0.05, color: 0x0b0f14, alpha: 0.5 });
+  head.circle(0, -0.3, 0.27).fill({ color: hair });
+  head.circle(0, -0.46, 0.16).fill({ color: skin });
+  head
+    .moveTo(0, -0.62)
+    .lineTo(0.09, -0.45)
+    .lineTo(-0.09, -0.45)
     .closePath()
-    .fill({ color: 0xffffff, alpha: 0.9 });
-  body.addChild(facing);
+    .fill({ color: lighten(skin, -34), alpha: 0.9 });
+  body.addChild(head);
 
   container.addChild(body);
   container.addChild(makeLabel(name.slice(0, 16)));
